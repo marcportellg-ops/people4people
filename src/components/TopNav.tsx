@@ -1,19 +1,34 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Sparkles, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { Sparkles, Menu, X, ShieldCheck } from "lucide-react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { getMyCharacters, getUnseenDeliveryCount } from "@/lib/db";
 
 const links = [
   { to: "/gallery", label: "Gallery" },
   { to: "/create", label: "Create" },
-  { to: "/dashboard", label: "Dashboard" },
 ];
 
 export const TopNav = () => {
   const [open, setOpen] = useState(false);
+  const [unseenCount, setUnseenCount] = useState(0);
   const location = useLocation();
   const onLanding = location.pathname === "/";
+  const { user, isModerator } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
+    getMyCharacters(user.uid)
+      .then((chars) => getUnseenDeliveryCount(chars.map((c) => c.id)))
+      .then(setUnseenCount)
+      .catch(() => {});
+  }, [user, location.pathname]);
+
+  const initials = user?.displayName
+    ? user.displayName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    : "??";
 
   return (
     <motion.header
@@ -53,6 +68,21 @@ export const TopNav = () => {
               {l.label}
             </NavLink>
           ))}
+          {isModerator && (
+            <NavLink
+              to="/dashboard"
+              className={({ isActive }) =>
+                cn(
+                  "px-4 py-2 text-sm rounded-full transition-colors inline-flex items-center gap-1.5",
+                  isActive
+                    ? "text-foreground bg-secondary/60"
+                    : "text-primary/80 hover:text-primary",
+                )
+              }
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Dashboard
+            </NavLink>
+          )}
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
@@ -63,9 +93,30 @@ export const TopNav = () => {
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             Premium
           </Link>
-          <button className="h-9 w-9 rounded-full bg-secondary border border-border/60 text-sm text-foreground/80 hover:text-foreground transition">
-            AS
-          </button>
+
+          {user ? (
+            <Link to="/profile" title="Your profile" className="relative hover:opacity-80 transition">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName ?? ""} className="h-8 w-8 rounded-full border border-border/60" />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 grid place-items-center text-xs font-medium text-primary">
+                  {initials}
+                </div>
+              )}
+              {unseenCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 border-2 border-background grid place-items-center text-[9px] font-bold text-white">
+                  {unseenCount > 9 ? "9+" : unseenCount}
+                </span>
+              )}
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              className="rounded-full bg-secondary border border-border/60 px-4 py-2 text-sm hover:border-primary/40 transition"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
 
         <button
@@ -99,6 +150,18 @@ export const TopNav = () => {
                 {l.label}
               </NavLink>
             ))}
+            {isModerator && (
+              <NavLink
+                to="/dashboard"
+                onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  cn("px-4 py-3 rounded-lg text-sm inline-flex items-center gap-2",
+                    isActive ? "bg-secondary text-foreground" : "text-primary/80")
+                }
+              >
+                <ShieldCheck className="h-4 w-4" /> Dashboard
+              </NavLink>
+            )}
             <Link
               to="/subscribe"
               onClick={() => setOpen(false)}
@@ -106,6 +169,18 @@ export const TopNav = () => {
             >
               ✦ Premium
             </Link>
+            {user ? (
+              <button
+                onClick={() => { signOutUser(); setOpen(false); }}
+                className="px-4 py-3 rounded-lg text-sm text-muted-foreground text-left"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link to="/login" onClick={() => setOpen(false)} className="px-4 py-3 rounded-lg text-sm text-muted-foreground">
+                Sign in
+              </Link>
+            )}
           </div>
         </motion.div>
       )}

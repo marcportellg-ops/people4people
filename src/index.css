@@ -134,6 +134,12 @@
   .scrollbar-hide { scrollbar-width: none; }
 }
 
+@layer components {
+  .field-textarea {
+    @apply w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm leading-relaxed focus:outline-none focus:border-primary/50 transition resize-none placeholder:text-muted-foreground/50;
+  }
+}
+
 @layer utilities {
   .breathe {
     animation: breathe 6s ease-in-out infinite;
