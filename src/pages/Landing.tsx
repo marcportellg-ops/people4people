@@ -5,10 +5,12 @@ import { ArrowRight, Heart, Sparkles } from "lucide-react";
 import { characters } from "@/data/characters";
 import { TopNav } from "@/components/TopNav";
 import { TrustBadge } from "@/components/Trust";
+import { useLanguage } from "@/context/LanguageContext";
 
 type Side = "left" | "right" | null;
 
 const Landing = () => {
+  const { t } = useLanguage();
   const ref = useRef<HTMLDivElement>(null);
   const [side, setSide] = useState<Side>(null);
   const [inside, setInside] = useState(false);
@@ -71,20 +73,20 @@ const Landing = () => {
 
       {/* ─── Mobile layout ─────────────────────────────────────── */}
       <div className="flex flex-col md:hidden min-h-screen pt-24 pb-12 px-6 gap-6 items-center justify-center">
-        <TrustBadge>An empathy network · No human-to-human contact</TrustBadge>
+        <TrustBadge>{t("landing.badge")}</TrustBadge>
         <h1 className="font-display text-5xl text-gradient text-center leading-[0.97] mt-4">
-          Now it's your turn<br />to decide.
+          {t("landing.headline").split("\n")[0]}<br />{t("landing.headline").split("\n")[1]}
         </h1>
         <p className="text-center text-sm text-muted-foreground max-w-xs mt-2">
-          Help someone carry their problem — or create a character from your own.
+          {t("landing.mobile.body")}
         </p>
         <div className="mt-4 flex flex-col gap-3 w-full max-w-xs">
           <Link to="/gallery" className="flex items-center justify-between rounded-2xl border border-border bg-surface px-5 py-4 text-sm hover:border-primary/40 transition">
-            <span className="flex items-center gap-2"><Heart className="h-4 w-4 text-primary" /> Help someone</span>
+            <span className="flex items-center gap-2"><Heart className="h-4 w-4 text-primary" /> {t("landing.mobile.helpBtn")}</span>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
           </Link>
           <Link to="/create" className="flex items-center justify-between rounded-2xl border border-border bg-surface px-5 py-4 text-sm hover:border-primary/40 transition">
-            <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /> Be heard</span>
+            <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /> {t("landing.mobile.heardBtn")}</span>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         </div>
@@ -147,11 +149,11 @@ const Landing = () => {
             side="left"
             active={side === "left"}
             icon={<Heart className="h-4 w-4" />}
-            eyebrow="For helpers"
-            title={<>Help solve<br />someone's problem</>}
-            sub="Listen. Respond. Be the person you wish someone had been for you."
+            eyebrow={t("landing.left.eyebrow")}
+            title={<>{t("landing.left.title").split("\n")[0]}<br />{t("landing.left.title").split("\n")[1]}</>}
+            sub={t("landing.left.sub")}
             href="/gallery"
-            cta="Enter the gallery"
+            cta={t("landing.left.cta")}
           />
         </motion.div>
 
@@ -181,11 +183,11 @@ const Landing = () => {
             side="right"
             active={side === "right"}
             icon={<Sparkles className="h-4 w-4" />}
-            eyebrow="For seekers"
-            title={<>Create someone<br />who needs help</>}
-            sub="Turn what you're carrying into a character. Receive thoughtful responses, safely."
+            eyebrow={t("landing.right.eyebrow")}
+            title={<>{t("landing.right.title").split("\n")[0]}<br />{t("landing.right.title").split("\n")[1]}</>}
+            sub={t("landing.right.sub")}
             href="/create"
-            cta="Begin creation"
+            cta={t("landing.right.cta")}
           />
         </motion.div>
 
@@ -200,19 +202,19 @@ const Landing = () => {
               transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
               className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-20"
             >
-              <TrustBadge className="mb-6">An empathy network · No human-to-human contact</TrustBadge>
+              <TrustBadge className="mb-6">{t("landing.badge")}</TrustBadge>
               <h1 className="font-display text-[clamp(2.8rem,7vw,6rem)] leading-[0.95] text-gradient max-w-5xl">
-                Now it's your turn<br />to decide.
+                {t("landing.headline").split("\n")[0]}<br />{t("landing.headline").split("\n")[1]}
               </h1>
               <p className="mt-6 max-w-md text-sm md:text-base text-muted-foreground">
-                Move left to help. Move right to be heard.
+                {t("landing.hint")}
               </p>
               <motion.div
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 2.4, repeat: Infinity }}
                 className="mt-10 text-[10px] uppercase tracking-[0.3em] text-muted-foreground/70"
               >
-                ◂ choose a side ▸
+                {t("landing.chooseSide")}
               </motion.div>
             </motion.div>
           )}
@@ -285,14 +287,16 @@ const SideContent = ({
   </motion.div>
 );
 
-const CreatePreview = () => (
+const CreatePreview = () => {
+  const { t } = useLanguage();
+  return (
   <div className="absolute inset-0 flex items-center justify-end pr-12">
     <div className="w-full max-w-sm space-y-2.5">
       {[
-        { n: 1, label: "Tell us what happened." },
-        { n: 2, label: "We'll ask you a few questions." },
-        { n: 3, label: "Choose a face that feels right." },
-        { n: 4, label: "Publish. Receive help safely." },
+        { n: 1, label: t("landing.preview.step1") },
+        { n: 2, label: t("landing.preview.step2") },
+        { n: 3, label: t("landing.preview.step3") },
+        { n: 4, label: t("landing.preview.step4") },
       ].map(({ n, label }, i) => (
         <motion.div
           key={label}
@@ -310,6 +314,7 @@ const CreatePreview = () => (
     </div>
     <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-background/75 pointer-events-none" />
   </div>
-);
+  );
+};
 
 export default Landing;

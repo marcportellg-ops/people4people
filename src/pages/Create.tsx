@@ -10,6 +10,7 @@ import { saveCharacter } from "@/lib/db";
 import { generatePortraits } from "@/lib/portraits";
 import { isSpeechSupported, startRecognition, fetchNarratorAudio, speakText, stopSpeaking } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 type Step = 0 | 1 | 2 | 3;
 
@@ -57,6 +58,7 @@ const Create = () => {
   const storyStoppingRef = useRef(false); // true when user clicked stop (not browser auto-stop)
   const navigate = useNavigate();
   const { user, isModerator } = useAuth();
+  const { t } = useLanguage();
 
   const startStoryRecognition = () => {
     const rec = startRecognition(
@@ -350,7 +352,7 @@ const Create = () => {
       <div className="container pt-32 max-w-4xl">
         <div className="flex items-center justify-between">
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition">
-            <ArrowLeft className="h-4 w-4" /> Back home
+            <ArrowLeft className="h-4 w-4" /> {t("create.back")}
           </Link>
           {isModerator && (
             <button
@@ -364,7 +366,7 @@ const Create = () => {
 
         {/* Step indicator */}
         <div className="mt-8 flex items-center gap-3">
-          {["The story", "The person", "Their face", "Rehearse"].map((label, i) => (
+          {[t("create.steps.story"), t("create.steps.person"), t("create.steps.face"), t("create.steps.rehearse")].map((label, i) => (
             <div key={label} className="flex-1 flex items-center gap-3">
               <div
                 onClick={() => i !== step && i <= maxStep && goToStep(i as Step)}
@@ -393,20 +395,19 @@ const Create = () => {
         <AnimatePresence mode="wait">
           {step === 0 && (
             <StepWrap key="0">
-              <Eyebrow>Step 01 · The story</Eyebrow>
+              <Eyebrow>{t("create.step0.eyebrow")}</Eyebrow>
               <h1 className="font-display text-5xl md:text-6xl text-gradient leading-[1.05] mt-3">
-                Tell us what<br />happened.
+                {t("create.step0.headline").split("\n")[0]}<br />{t("create.step0.headline").split("\n")[1]}
               </h1>
               <p className="mt-5 text-muted-foreground max-w-xl">
-                There's no right way to start. Write it the way it lives inside you — messy, unfinished, raw.
-                Only you and our quiet moderation will read it.
+                {t("create.step0.body")}
               </p>
               <div className="mt-8 glass-strong rounded-3xl p-2">
                 <textarea
                   value={story}
                   onChange={(e) => { if (!storyListening) setStory(e.target.value); }}
                   rows={9}
-                  placeholder={storyListening ? "Listening… speak your story" : "It started about three months ago, when…"}
+                  placeholder={storyListening ? "Listening… speak your story" : t("create.step0.placeholder")}
                   className={`w-full bg-transparent rounded-2xl p-5 text-base leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none resize-none transition ${storyListening ? "text-muted-foreground italic" : ""}`}
                 />
                 <div className="flex items-center justify-between px-3 pb-2">
@@ -422,13 +423,13 @@ const Create = () => {
                       }`}
                     >
                       {storyListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-                      {storyListening ? "Stop listening" : "Speak it instead"}
+                      {storyListening ? t("create.step0.stopListening") : t("create.step0.speak")}
                     </motion.button>
                   )}
                   <span className="text-xs text-muted-foreground">{story.length} characters</span>
                 </div>
               </div>
-              <TrustBadge className="mt-6">Encrypted · Never linked to your real identity</TrustBadge>
+              <TrustBadge className="mt-6">{t("create.step0.trust")}</TrustBadge>
               <Footer
                 onNext={() => goToStep(1)}
                 disabled={story.trim().length < 12}
@@ -438,18 +439,18 @@ const Create = () => {
 
           {step === 1 && (
             <StepWrap key="1">
-              <Eyebrow>Step 02 · The person</Eyebrow>
+              <Eyebrow>{t("create.step1.eyebrow")}</Eyebrow>
               <h1 className="font-display text-4xl md:text-5xl text-gradient leading-[1.05] mt-3">
-                Let's understand them.
+                {t("create.step1.headline")}
               </h1>
               <p className="mt-4 text-muted-foreground max-w-xl">
-                Answer naturally — there are no wrong answers. The more you share, the more real they become.
+                {t("create.step1.body")}
               </p>
 
               <div className="mt-8 glass-strong rounded-3xl overflow-hidden flex flex-col" style={{ height: "460px" }}>
                 <div className="px-5 py-3 border-b border-border/40 flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  Listening carefully
+                  {t("create.step1.listening")}
                 </div>
 
                 <div ref={intakeScrollRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
@@ -508,7 +509,7 @@ const Create = () => {
                     onChange={(e) => setIntakeInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendIntakeAnswer()}
                     disabled={intakeLoading}
-                    placeholder={intakeDone ? "Correct anything — just tell me…" : "Your answer…"}
+                    placeholder={intakeDone ? t("create.step1.correct") : t("create.step1.placeholder")}
                     className="flex-1 bg-surface border border-border rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition disabled:opacity-40"
                   />
                   <button
@@ -525,19 +526,19 @@ const Create = () => {
                 onBack={() => goToStep(0)}
                 onNext={() => goToStep(2)}
                 disabled={!intakeDone}
-                nextLabel="Find their face"
+                nextLabel={t("create.step1.next")}
               />
             </StepWrap>
           )}
 
           {step === 2 && (
             <StepWrap key="2">
-              <Eyebrow>Step 03 · Their face</Eyebrow>
+              <Eyebrow>{t("create.step2.eyebrow")}</Eyebrow>
               <h1 className="font-display text-4xl md:text-5xl text-gradient leading-[1.05] mt-3">
-                Choose the face that<br />feels true.
+                {t("create.step2.headline").split("\n")[0]}<br />{t("create.step2.headline").split("\n")[1]}
               </h1>
               <p className="mt-4 text-muted-foreground max-w-xl">
-                We'll generate portraits based on what you told us. Pick the one that feels right.
+                {t("create.step2.body")}
               </p>
 
               {generatedPortraits.length === 0 && !generatingPortraits && (
@@ -545,7 +546,7 @@ const Create = () => {
                   {/* What we already know */}
                   {answers[0] && (
                     <div className="glass rounded-2xl p-4 space-y-1">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Based on your description</p>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("create.step2.basedOn")}</p>
                       <p className="text-sm text-foreground/80 leading-relaxed line-clamp-3">{answers[0]}</p>
                     </div>
                   )}
@@ -553,21 +554,21 @@ const Create = () => {
                   {/* Optional extra details */}
                   <div className="glass-strong rounded-2xl p-5 space-y-3">
                     <div>
-                      <p className="text-sm font-medium">Add physical details <span className="text-muted-foreground font-normal">(optional)</span></p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Hair colour, eye colour, build, distinguishing features — anything the AI should know.</p>
+                      <p className="text-sm font-medium">{t("create.step2.addDetails")} <span className="text-muted-foreground font-normal">(optional)</span></p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t("create.step2.addDetailsSub")}</p>
                     </div>
                     <textarea
                       value={portraitHints}
                       onChange={(e) => setPortraitHints(e.target.value)}
                       rows={3}
-                      placeholder="e.g. dark curly hair, green eyes, light beard, broad shoulders, tired-looking but kind face…"
+                      placeholder={t("create.step2.detailsPlaceholder")}
                       className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition resize-none placeholder:text-muted-foreground/50"
                     />
                     <button
                       onClick={handleGeneratePortraits}
                       className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-6 py-3 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
                     >
-                      <Sparkles className="h-4 w-4" /> Generate portraits
+                      <Sparkles className="h-4 w-4" /> {t("create.step2.generate")}
                     </button>
                   </div>
                 </div>
@@ -585,7 +586,7 @@ const Create = () => {
                       />
                     ))}
                   </div>
-                  <p className="text-sm text-muted-foreground">Generating portraits… usually 5–10 seconds</p>
+                  <p className="text-sm text-muted-foreground">{t("create.step2.generating")}</p>
                 </div>
               )}
 
@@ -630,18 +631,18 @@ const Create = () => {
                       <input
                         value={portraitHints}
                         onChange={(e) => setPortraitHints(e.target.value)}
-                        placeholder="Adjust details and regenerate… e.g. lighter skin, shorter hair"
+                        placeholder={t("create.step2.adjust")}
                         className="flex-1 bg-surface border border-border rounded-full px-4 py-2 text-sm focus:outline-none focus:border-primary/50 transition placeholder:text-muted-foreground/50"
                       />
                       <button
                         onClick={handleGeneratePortraits}
                         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition shrink-0"
                       >
-                        <RefreshCw className="h-4 w-4" /> Regenerate
+                        <RefreshCw className="h-4 w-4" /> {t("create.step2.regenerate")}
                       </button>
                     </div>
                     <div className="flex justify-end">
-                      <span className="text-xs text-muted-foreground">{selectedPortrait ? "1 selected" : "Pick one to continue"}</span>
+                      <span className="text-xs text-muted-foreground">{selectedPortrait ? t("create.step2.selected") : t("create.step2.pickOne")}</span>
                     </div>
                   </div>
                 </>
@@ -651,19 +652,19 @@ const Create = () => {
                 onBack={() => goToStep(1)}
                 onNext={() => goToStep(3)}
                 disabled={!selectedPortrait}
-                nextLabel="Select this person"
+                nextLabel={t("create.step2.next")}
               />
             </StepWrap>
           )}
 
           {step === 3 && (
             <StepWrap key="3">
-              <Eyebrow>Step 04 · Rehearse</Eyebrow>
+              <Eyebrow>{t("create.step3.eyebrow")}</Eyebrow>
               <h1 className="font-display text-4xl md:text-5xl text-gradient leading-[1.05] mt-3">
-                Talk to them, privately.
+                {t("create.step3.headline")}
               </h1>
               <p className="mt-4 text-muted-foreground max-w-xl">
-                Refine their tone, what they remember, how they react. When it feels right, publish.
+                {t("create.step3.body")}
               </p>
 
               <div className="mt-8 grid lg:grid-cols-[260px_1fr] gap-5">
@@ -681,12 +682,12 @@ const Create = () => {
                                 transition={{ duration: 1.2, repeat: Infinity }}
                                 className="font-display text-lg text-muted-foreground"
                               >
-                                Naming…
+                                {t("create.step3.naming")}
                               </motion.p>
                             ) : (
                               <p className="font-display text-lg">{characterName || "—"}</p>
                             )}
-                            <p className="text-[10px] text-muted-foreground">Fictional name</p>
+                            <p className="text-[10px] text-muted-foreground">{t("create.step3.fictionalName")}</p>
                           </div>
                           <button
                             onClick={rerollName}
@@ -748,11 +749,11 @@ const Create = () => {
                       onClick={startInterview}
                       className="w-full text-xs rounded-xl border border-dashed border-primary/30 text-primary/70 px-3 py-2.5 hover:border-primary/60 hover:text-primary transition"
                     >
-                      ✦ Let AI ask me questions instead
+                      {t("create.step3.aiInterview")}
                     </button>
                   ) : (
                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-3 space-y-2">
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground px-1">AI interview</p>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground px-1">{t("create.step3.aiInterviewLabel")}</p>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {interviewMsgs.map((m, i) => (
                           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -795,13 +796,13 @@ const Create = () => {
 
                 <div className="glass-strong rounded-3xl flex flex-col h-[520px] overflow-hidden">
                   <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Private rehearsal · Not visible to anyone</span>
-                    <TrustBadge>Draft mode</TrustBadge>
+                    <span className="text-muted-foreground">{t("create.step3.privateLabel")}</span>
+                    <TrustBadge>{t("create.step3.draftMode")}</TrustBadge>
                   </div>
                   <div className="flex-1 overflow-y-auto p-5 space-y-3">
                     {rehearsalMsgs.length === 0 && (
                       <p className="text-muted-foreground text-sm text-center mt-20">
-                        Say hello. See if they sound like the person you imagined.
+                        {t("create.step3.sayHello")}
                       </p>
                     )}
                     {rehearsalMsgs.map((m, i) => (
@@ -855,7 +856,7 @@ const Create = () => {
                           }
                         }
                       }}
-                      placeholder="Test a line…"
+                      placeholder={t("create.step3.testLine")}
                       className="flex-1 bg-surface border border-border rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition"
                     />
                   </div>
@@ -864,7 +865,7 @@ const Create = () => {
 
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <button onClick={() => goToStep(2)} className="text-sm text-muted-foreground hover:text-foreground transition">
-                  ← Back to portraits
+                  {t("create.step3.backToPortraits")}
                 </button>
                 <div className="flex flex-col items-end gap-1.5">
                   {generatingNarrator && (
@@ -873,7 +874,7 @@ const Create = () => {
                       transition={{ duration: 1.2, repeat: Infinity }}
                       className="text-xs text-muted-foreground"
                     >
-                      Writing their story…
+                      {t("create.step3.writingStory")}
                     </motion.p>
                   )}
                   <button
@@ -881,7 +882,7 @@ const Create = () => {
                     onClick={() => setNarratorPreview(true)}
                     className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-6 py-3 text-sm font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
-                    Hear their story <ArrowRight className="h-4 w-4" />
+                    {t("create.step3.hearStory")} <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -978,6 +979,8 @@ const NarratorPreviewOverlay = ({
     setNarrationDone(true);
   };
 
+  const { t } = useLanguage();
+
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col">
       {audioUrl && (
@@ -1002,7 +1005,7 @@ const NarratorPreviewOverlay = ({
           onClick={skipToEnd}
           className="fixed top-6 right-6 z-20 inline-flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition"
         >
-          Skip <ChevronRight className="h-3 w-3" />
+          {t("create.narrator.skip")} <ChevronRight className="h-3 w-3" />
         </button>
       )}
 
@@ -1014,7 +1017,7 @@ const NarratorPreviewOverlay = ({
             transition={{ duration: 1.6, repeat: Infinity }}
             className="text-sm text-muted-foreground tracking-wide"
           >
-            Preparing the story…
+            {t("create.narrator.preparing")}
           </motion.p>
         </div>
       )}
@@ -1034,7 +1037,7 @@ const NarratorPreviewOverlay = ({
               <img src={portrait} alt={characterName} className="h-14 w-14 rounded-full object-cover border border-border/40" />
               <div>
                 <p className="font-display text-xl">{characterName}</p>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">Their story</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">{t("create.narrator.theirStory")}</p>
               </div>
             </motion.div>
 
@@ -1069,7 +1072,7 @@ const NarratorPreviewOverlay = ({
                     disabled={publishing}
                     className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-7 py-3.5 text-sm font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-60 disabled:hover:scale-100"
                   >
-                    {publishing ? "Publishing…" : "Publish character"}
+                    {publishing ? t("create.narrator.publishing") : t("create.narrator.publish")}
                     {!publishing && <ArrowRight className="h-4 w-4" />}
                   </button>
                   <button
@@ -1077,7 +1080,7 @@ const NarratorPreviewOverlay = ({
                     disabled={publishing}
                     className="inline-flex items-center gap-2 rounded-full border border-border/60 px-6 py-3.5 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition disabled:opacity-40"
                   >
-                    Fix the story
+                    {t("create.narrator.fix")}
                   </button>
                 </motion.div>
               )}
@@ -1109,29 +1112,32 @@ const Footer = ({
   onBack,
   onNext,
   disabled,
-  nextLabel = "Continue",
+  nextLabel,
 }: {
   onBack?: () => void;
   onNext?: () => void;
   disabled?: boolean;
   nextLabel?: string;
-}) => (
-  <div className="mt-8 flex items-center justify-between">
-    {onBack ? (
-      <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground transition">
-        ← Back
-      </button>
-    ) : <span />}
-    {onNext && (
-      <button
-        onClick={onNext}
-        disabled={disabled}
-        className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-6 py-3 text-sm font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
-      >
-        {nextLabel} <ArrowRight className="h-4 w-4" />
-      </button>
-    )}
-  </div>
-);
+}) => {
+  const { t } = useLanguage();
+  return (
+    <div className="mt-8 flex items-center justify-between">
+      {onBack ? (
+        <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground transition">
+          {t("common.back")}
+        </button>
+      ) : <span />}
+      {onNext && (
+        <button
+          onClick={onNext}
+          disabled={disabled}
+          className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-6 py-3 text-sm font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+        >
+          {nextLabel ?? t("common.continue")} <ArrowRight className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 export default Create;

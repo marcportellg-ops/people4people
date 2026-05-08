@@ -10,12 +10,14 @@ import { createConversation, saveMessages, endConversation, getCharacterById, sa
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 type Msg = { role: "char" | "user"; text: string; t: string };
 
 const Conversation = () => {
   const { id } = useParams();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const [character, setCharacter] = useState<Character | undefined>(
@@ -121,7 +123,7 @@ const Conversation = () => {
   if (!character) {
     return (
       <div className="min-h-screen grid place-items-center">
-        <p className="text-muted-foreground">Character not found.</p>
+        <p className="text-muted-foreground">{t("conversation.notFound")}</p>
       </div>
     );
   }
@@ -140,7 +142,7 @@ const Conversation = () => {
             transition={{ duration: 1.6, repeat: Infinity }}
             className="text-sm text-muted-foreground tracking-wide"
           >
-            Preparing {character.name}'s story…
+            {t("conversation.preparing")} {character.name}{t("conversation.storySuffix")}
           </motion.p>
         </div>
       );
@@ -256,7 +258,7 @@ const Conversation = () => {
             onClick={() => navigate(-1)}
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to gallery
+            <ArrowLeft className="h-4 w-4" /> {t("conversation.backToGallery")}
           </button>
 
           <motion.div
@@ -299,7 +301,7 @@ const Conversation = () => {
             </div>
           </div>
 
-          <TrustBadge>Conversation moderated · Voice anonymized</TrustBadge>
+          <TrustBadge>{t("conversation.trust")}</TrustBadge>
         </aside>
 
         {/* Chat */}
@@ -308,14 +310,14 @@ const Conversation = () => {
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
             <div className="flex items-center gap-3">
               <ShieldCheck className="h-4 w-4 text-primary" />
-              <span className="text-sm">Safe session with {character.name}</span>
+              <span className="text-sm">{t("conversation.safeSession")} {character.name}</span>
               {speaking && (
                 <motion.span
                   animate={{ opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 1.2, repeat: Infinity }}
                   className="inline-flex items-center gap-1 text-[10px] text-primary uppercase tracking-wider"
                 >
-                  <Volume2 className="h-3 w-3" /> Speaking…
+                  <Volume2 className="h-3 w-3" /> {t("conversation.speaking")}
                 </motion.span>
               )}
             </div>
@@ -340,7 +342,7 @@ const Conversation = () => {
                   }`}
                 >
                   {voiceEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
-                  Voice {voiceEnabled ? "on" : "off"}
+                  {voiceEnabled ? t("conversation.voiceOn") : t("conversation.voiceOff")}
                 </button>
               )}
               {!ended && (
@@ -348,7 +350,7 @@ const Conversation = () => {
                   onClick={endSession}
                   className="rounded-full border border-border/60 px-3 py-1 text-xs hover:border-destructive/60 hover:text-destructive transition"
                 >
-                  End session
+                  {t("conversation.endSession")}
                 </button>
               )}
             </div>
@@ -431,7 +433,7 @@ const Conversation = () => {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && send(undefined)}
                     disabled={listening}
-                    placeholder={listening ? "Listening… speak now" : `Reply to ${character.name}…`}
+                    placeholder={listening ? t("conversation.listening") : `${t("conversation.replyTo")} ${character.name}…`}
                     className={`w-full rounded-full bg-surface border px-5 py-3 text-sm focus:outline-none focus:border-primary/50 transition ${
                       listening ? "border-red-500/40 text-muted-foreground italic" : "border-border"
                     }`}
@@ -446,7 +448,7 @@ const Conversation = () => {
                 </button>
               </div>
               <p className="mt-2 text-[10px] text-muted-foreground/80 px-2 flex items-center gap-2">
-                <span className="inline-block h-1 w-1 rounded-full bg-primary animate-pulse" /> Live transcription on · Reviewed before delivery
+                <span className="inline-block h-1 w-1 rounded-full bg-primary animate-pulse" /> {t("conversation.reviewedNote")}
               </p>
             </div>
           )}
@@ -454,8 +456,8 @@ const Conversation = () => {
           {/* Time's up */}
           {(ended || timeLeft === 0) && (
             <div className="border-t border-border/40 p-5 text-center space-y-1">
-              <p className="text-sm font-medium">Your 15-minute session has ended.</p>
-              <p className="text-xs text-muted-foreground">Return to the gallery to start a new one.</p>
+              <p className="text-sm font-medium">{t("conversation.sessionEnded")}</p>
+              <p className="text-xs text-muted-foreground">{t("conversation.sessionEndedSub")}</p>
             </div>
           )}
         </section>
@@ -464,7 +466,9 @@ const Conversation = () => {
   );
 };
 
-const EndState = ({ character }: { character: string }) => (
+const EndState = ({ character }: { character: string }) => {
+  const { t } = useLanguage();
+  return (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -474,21 +478,23 @@ const EndState = ({ character }: { character: string }) => (
     <div className="mx-auto h-12 w-12 rounded-full bg-gradient-amber grid place-items-center shadow-glow">
       <ShieldCheck className="h-5 w-5 text-primary-foreground" />
     </div>
-    <h3 className="font-display text-3xl">Thank you for showing up.</h3>
+    <h3 className="font-display text-3xl">{t("conversation.thankYou")}</h3>
     <p className="text-sm text-muted-foreground leading-relaxed">
-      Your conversation with {character} will be reviewed by our moderation team and shared safely
-      with the original creator within 24 hours. Their identity stays protected. So does yours.
+      {t("conversation.thankYouBody").replace("{name}", character)}
     </p>
     <Link
       to="/gallery"
       className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-3 text-sm hover:border-primary/40 transition"
     >
-      Return to the gallery
+      {t("conversation.returnGallery")}
     </Link>
   </motion.div>
-);
+  );
+};
 
-const CrisisAlert = ({ level }: { level: "low" | "high" }) => (
+const CrisisAlert = ({ level }: { level: "low" | "high" }) => {
+  const { t } = useLanguage();
+  return (
   <motion.div
     initial={{ opacity: 0, y: 12 }}
     animate={{ opacity: 1, y: 0 }}
@@ -503,18 +509,14 @@ const CrisisAlert = ({ level }: { level: "low" | "high" }) => (
       <span className="mt-0.5 text-base">{level === "high" ? "🟠" : "🔵"}</span>
       <div className="space-y-1.5">
         <p className="text-sm font-medium">
-          {level === "high"
-            ? "This conversation has touched on crisis territory."
-            : "Difficult feelings have come up in this conversation."}
+          {level === "high" ? t("conversation.crisis.high") : t("conversation.crisis.low")}
         </p>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          {level === "high"
-            ? "If you sense immediate risk, gently encourage the person to reach out to a crisis line. Stay present, don't minimise, and don't try to fix — just listen."
-            : "Stay calm and keep listening. You don't need to have answers — being present is enough."}
+          {level === "high" ? t("conversation.crisis.highSub") : t("conversation.crisis.lowSub")}
         </p>
         {level === "high" && (
           <div className="pt-1 space-y-1 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground/80">Crisis resources:</p>
+            <p className="font-medium text-foreground/80">{t("conversation.crisis.resources")}</p>
             <p>🇪🇸 Spain — Teléfono de la Esperanza: 717 003 717</p>
             <p>🇺🇸 US — Crisis Text Line: text HOME to 741741</p>
             <p>🇬🇧 UK — Samaritans: 116 123</p>
@@ -524,9 +526,11 @@ const CrisisAlert = ({ level }: { level: "low" | "high" }) => (
       </div>
     </div>
   </motion.div>
-);
+  );
+};
 
 const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: () => void }) => {
+  const { t } = useLanguage();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(true);
   const [revealedCount, setRevealedCount] = useState(0);
@@ -624,7 +628,7 @@ const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: 
         onClick={handleEnter}
         className="fixed top-6 right-6 z-20 inline-flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition"
       >
-        Skip <ChevronRight className="h-3 w-3" />
+        {t("conversation.skip")} <ChevronRight className="h-3 w-3" />
       </button>
 
       {/* Loading state */}
@@ -635,7 +639,7 @@ const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: 
             transition={{ duration: 1.6, repeat: Infinity }}
             className="text-sm text-muted-foreground tracking-wide"
           >
-            Preparing {character.name}'s story…
+            {t("conversation.preparing")} {character.name}{t("conversation.storySuffix")}
           </motion.p>
         </div>
       )}
@@ -692,7 +696,7 @@ const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: 
                     onClick={handleEnter}
                     className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-7 py-3.5 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
                   >
-                    Meet {character.name} <ArrowRight className="h-4 w-4" />
+                    {t("conversation.meet")} {character.name} <ArrowRight className="h-4 w-4" />
                   </button>
                 </motion.div>
               )}
