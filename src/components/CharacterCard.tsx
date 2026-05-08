@@ -7,7 +7,7 @@ import { useLanguage } from "@/context/LanguageContext";
 
 export const CharacterCard = ({ character, index = 0 }: { character: Character; index?: number }) => {
   const [hovered, setHovered] = useState(false);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <motion.div
@@ -123,7 +123,7 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
                   transition={{ delay: 0.13 }}
                   className="text-xs text-muted-foreground leading-relaxed line-clamp-2"
                 >
-                  {character.summary}
+                  {(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.summary) || character.summary}
                 </motion.p>
 
                 {/* CTA */}

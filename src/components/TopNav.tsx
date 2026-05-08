@@ -4,12 +4,9 @@ import { Sparkles, Menu, X, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { getMyCharacters, getUnseenDeliveryCount } from "@/lib/db";
-
-const links = [
-  { to: "/gallery", label: "Gallery" },
-  { to: "/create", label: "Create" },
-];
+import { signOutUser } from "@/lib/auth";
 
 export const TopNav = () => {
   const [open, setOpen] = useState(false);
@@ -17,6 +14,11 @@ export const TopNav = () => {
   const location = useLocation();
   const onLanding = location.pathname === "/";
   const { user, isModerator } = useAuth();
+  const { t } = useLanguage();
+  const links = [
+    { to: "/gallery", label: t("nav.gallery") },
+    { to: "/create", label: t("nav.create") },
+  ];
 
   useEffect(() => {
     if (!user) return;
@@ -80,7 +82,7 @@ export const TopNav = () => {
                 )
               }
             >
-              <ShieldCheck className="h-3.5 w-3.5" /> Dashboard
+              <ShieldCheck className="h-3.5 w-3.5" /> {t("nav.dashboard")}
             </NavLink>
           )}
         </nav>
@@ -91,7 +93,7 @@ export const TopNav = () => {
             className="group inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm text-foreground/90 hover:text-foreground transition-colors"
           >
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Premium
+            {t("nav.premium")}
           </Link>
 
           {user ? (
@@ -114,7 +116,7 @@ export const TopNav = () => {
               to="/login"
               className="rounded-full bg-secondary border border-border/60 px-4 py-2 text-sm hover:border-primary/40 transition"
             >
-              Sign in
+              {t("nav.signIn")}
             </Link>
           )}
         </div>
@@ -159,7 +161,7 @@ export const TopNav = () => {
                     isActive ? "bg-secondary text-foreground" : "text-primary/80")
                 }
               >
-                <ShieldCheck className="h-4 w-4" /> Dashboard
+                <ShieldCheck className="h-4 w-4" /> {t("nav.dashboard")}
               </NavLink>
             )}
             <Link
@@ -174,11 +176,11 @@ export const TopNav = () => {
                 onClick={() => { signOutUser(); setOpen(false); }}
                 className="px-4 py-3 rounded-lg text-sm text-muted-foreground text-left"
               >
-                Sign out
+                {t("nav.signOut")}
               </button>
             ) : (
               <Link to="/login" onClick={() => setOpen(false)} className="px-4 py-3 rounded-lg text-sm text-muted-foreground">
-                Sign in
+                {t("nav.signIn")}
               </Link>
             )}
           </div>

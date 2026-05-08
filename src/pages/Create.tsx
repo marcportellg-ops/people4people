@@ -5,8 +5,8 @@ import { ArrowLeft, ArrowRight, Check, ChevronRight, Mic, MicOff, RefreshCw, Spa
 import { TopNav } from "@/components/TopNav";
 import { TrustBadge } from "@/components/Trust";
 import { characters } from "@/data/characters";
-import { getDraftCharacterReply, generateCharacterProfile, conductRefineInterview, conductIntakeInterview, generateIntakeSummary, generateCharacterName, generateNarratorStory } from "@/lib/claude";
-import { saveCharacter } from "@/lib/db";
+import { getDraftCharacterReply, generateCharacterProfile, conductRefineInterview, conductIntakeInterview, generateIntakeSummary, generateCharacterName, generateNarratorStory, translateCharacterFields } from "@/lib/claude";
+import { saveCharacter, saveCharacterTranslations } from "@/lib/db";
 import { generatePortraits } from "@/lib/portraits";
 import { isSpeechSupported, startRecognition, fetchNarratorAudio, speakText, stopSpeaking } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
@@ -312,19 +312,31 @@ const Create = () => {
       const finalName = characterName || profile.name;
       const replaceName = (text: string) =>
         profile.name ? text.replaceAll(profile.name, finalName) : text;
-      await saveCharacter(
+      const finalSummary = replaceName(profile.summary);
+      const finalLongStory = replaceName(profile.longStory);
+      const finalIntro = replaceName(profile.intro);
+      const charId = await saveCharacter(
         {
           ...profile,
           name: finalName,
-          summary: replaceName(profile.summary),
-          longStory: replaceName(profile.longStory),
-          intro: replaceName(profile.intro),
+          summary: finalSummary,
+          longStory: finalLongStory,
+          intro: finalIntro,
           portrait: selectedPortrait,
           ...(narratorStory ? { narratorStory } : {}),
         },
         user!.uid,
         user!.email ?? undefined,
       );
+      // Translate all fields to ES/IT/FR in background — does not block navigation
+      const fields = { narratorStory: narratorStory || "", summary: finalSummary, longStory: finalLongStory, intro: finalIntro };
+      Promise.all([
+        translateCharacterFields(fields, "es"),
+        translateCharacterFields(fields, "it"),
+        translateCharacterFields(fields, "fr"),
+      ]).then(([es, it, fr]) =>
+        saveCharacterTranslations(charId, { es, it, fr }),
+      ).catch(() => {});
       navigate("/gallery");
     } catch {
       alert("Something went wrong while publishing. Please try again.");

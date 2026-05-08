@@ -5,8 +5,8 @@ import { ArrowLeft, ArrowRight, ChevronRight, Mic, MicOff, Send, ShieldCheck, Cl
 import { TopNav } from "@/components/TopNav";
 import { TrustBadge } from "@/components/Trust";
 import { characters, getCharacter, type Character } from "@/data/characters";
-import { getCharacterReply, summarizeConversation, moderateConversation, detectCrisis, generateNarratorStory } from "@/lib/claude";
-import { createConversation, saveMessages, endConversation, getCharacterById, saveConversationSummary, saveConversationModeration, saveNarratorStory } from "@/lib/db";
+import { getCharacterReply, summarizeConversation, moderateConversation, detectCrisis, generateNarratorStory, translateCharacterFields } from "@/lib/claude";
+import { createConversation, saveMessages, endConversation, getCharacterById, saveConversationSummary, saveConversationModeration, saveNarratorStory, saveCharacterTranslations } from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
@@ -17,7 +17,7 @@ type Msg = { role: "char" | "user"; text: string; t: string };
 const Conversation = () => {
   const { id } = useParams();
   const { user } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
 
   const [character, setCharacter] = useState<Character | undefined>(
@@ -44,6 +44,28 @@ const Conversation = () => {
     if (character || !id) return;
     getCharacterById(id).then((c) => { if (c) setCharacter(c); });
   }, [id]);
+
+  // Lazy-generate translations for non-English languages if not yet saved
+  useEffect(() => {
+    if (!character || lang === "en") return;
+    const tl = lang as "es" | "it" | "fr";
+    const existing = character.translations?.[tl];
+    if (existing?.narratorStory && existing.summary && existing.longStory && existing.intro) return;
+    // Only translate Firestore characters (not hardcoded test ones)
+    const isFirestoreChar = !characters.find((c) => c.id === character.id);
+    if (!isFirestoreChar) return;
+    const fields = {
+      narratorStory: character.narratorStory ?? "",
+      summary: character.summary,
+      longStory: character.longStory,
+      intro: character.intro,
+    };
+    translateCharacterFields(fields, tl).then((translated) => {
+      const newTranslations = { ...character.translations, [tl]: translated };
+      setCharacter((c) => c ? { ...c, translations: newTranslations } : c);
+      saveCharacterTranslations(character.id, newTranslations).catch(() => {});
+    }).catch(() => {});
+  }, [character?.id, lang]);
 
   // If a Firestore character is missing narratorStory, generate and save it
   useEffect(() => {
@@ -150,6 +172,7 @@ const Conversation = () => {
     return (
       <NarratorPhase
         character={character}
+        narratorText={(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.narratorStory) || (character.narratorStory ?? "")}
         onEnter={() => setPhase("chat")}
       />
     );
@@ -199,7 +222,7 @@ const Conversation = () => {
       }));
 
     try {
-      const reply = await getCharacterReply(character, history);
+      const reply = await getCharacterReply(character, history, lang);
       const charT = now();
       const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: reply, t: charT }];
       setMessages(updatedMsgs);
@@ -291,7 +314,7 @@ const Conversation = () => {
           </motion.div>
 
           <div className="glass rounded-2xl p-4 space-y-3 text-sm">
-            <p className="text-muted-foreground leading-relaxed">{character.longStory}</p>
+            <p className="text-muted-foreground leading-relaxed">{(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.longStory) || character.longStory}</p>
             <div className="flex flex-wrap gap-1.5 pt-1">
               {character.tags.map((tg) => (
                 <span key={tg} className="rounded-full bg-secondary/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -529,7 +552,7 @@ const CrisisAlert = ({ level }: { level: "low" | "high" }) => {
   );
 };
 
-const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: () => void }) => {
+const NarratorPhase = ({ character, narratorText, onEnter }: { character: Character; narratorText: string; onEnter: () => void }) => {
   const { t } = useLanguage();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(true);
@@ -538,18 +561,18 @@ const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const paragraphTimestamps = useRef<number[]>([]);
-  const paragraphs = (character.narratorStory ?? "").split(/\n\n+/).filter(Boolean);
+  const paragraphs = narratorText.split(/\n\n+/).filter(Boolean);
 
   // Fetch ElevenLabs audio on mount
   useEffect(() => {
     let blobUrl: string | null = null;
-    fetchNarratorAudio(character.narratorStory ?? "").then((url) => {
+    fetchNarratorAudio(narratorText).then((url) => {
       blobUrl = url;
       setAudioUrl(url);
       setAudioLoading(false);
     }).catch(() => setAudioLoading(false));
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, []);
+  }, [narratorText]);
 
   // Play audio once loaded
   useEffect(() => {
@@ -590,7 +613,7 @@ const NarratorPhase = ({ character, onEnter }: { character: Character; onEnter: 
       elapsed += p.split(/\s+/).length / 2.15 + 0.4;
     });
     timersRef.current.push(setTimeout(() => setNarrationDone(true), elapsed * 1000));
-    speakText(character.narratorStory ?? "", { narrator: true, onEnd: () => setNarrationDone(true) });
+    speakText(narratorText, { narrator: true, onEnd: () => setNarrationDone(true) });
     return () => { timersRef.current.forEach(clearTimeout); stopSpeaking(); };
   }, [audioLoading, audioUrl]);
 

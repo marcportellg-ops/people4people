@@ -62,6 +62,13 @@ export async function saveNarratorStory(id: string, narratorStory: string): Prom
   await updateDoc(doc(db, "characters", id), { narratorStory });
 }
 
+export async function saveCharacterTranslations(
+  id: string,
+  translations: Character["translations"],
+): Promise<void> {
+  await updateDoc(doc(db, "characters", id), { translations });
+}
+
 export async function updateCharacter(
   id: string,
   updates: Pick<Character, "summary" | "longStory" | "intro"> & { refinements?: Character["refinements"]; narratorStory?: string },

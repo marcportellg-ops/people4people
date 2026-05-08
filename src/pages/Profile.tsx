@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Plus, Settings, Clock, Pencil, LogOut, ChevronDown, Mail } from "lucide-react";
+import { ArrowRight, Plus, Settings, Pencil, LogOut, ChevronDown, Mail } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { LANGUAGE_LABELS, type Language } from "@/lib/translations";
 import { TopNav } from "@/components/TopNav";
 import { CharacterCard } from "@/components/CharacterCard";
 import { useAuth } from "@/context/AuthContext";
@@ -13,6 +15,8 @@ import type { ConversationDoc } from "@/lib/db";
 
 const Profile = () => {
   const { user, isModerator } = useAuth();
+  const { t, lang, setLang } = useLanguage();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [myCharacters, setMyCharacters] = useState<Character[]>([]);
   const [deliveries, setDeliveries] = useState<ConversationDoc[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -68,7 +72,7 @@ const Profile = () => {
             onClick={signOutUser}
             className="inline-flex items-center gap-2 rounded-full border border-border/60 px-4 py-2 text-sm text-muted-foreground hover:text-destructive hover:border-destructive/40 transition"
           >
-            <LogOut className="h-3.5 w-3.5" /> Sign out
+            <LogOut className="h-3.5 w-3.5" /> {t("profile.signOut")}
           </button>
         </motion.div>
 
@@ -81,14 +85,14 @@ const Profile = () => {
         >
           <div className="flex items-center justify-between mb-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-primary/90">Your characters</p>
-              <h2 className="mt-1 font-display text-2xl">Stories you've shared</h2>
+              <p className="text-xs uppercase tracking-[0.2em] text-primary/90">{t("profile.yourCharacters")}</p>
+              <h2 className="mt-1 font-display text-2xl">{t("profile.storiesShared")}</h2>
             </div>
             <Link
               to="/create"
               className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-4 py-2 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
             >
-              <Plus className="h-3.5 w-3.5" /> New character
+              <Plus className="h-3.5 w-3.5" /> {t("profile.newCharacter")}
             </Link>
           </div>
 
@@ -107,15 +111,13 @@ const Profile = () => {
 
           {!loading && myCharacters.length === 0 && (
             <div className="rounded-2xl border border-dashed border-border/60 p-12 text-center space-y-4">
-              <p className="font-display text-xl text-foreground/60">You haven't shared a story yet.</p>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                When you create a character, it will appear here. You'll be able to see how helpers responded to them.
-              </p>
+              <p className="font-display text-xl text-foreground/60">{t("profile.noCharacters")}</p>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">{t("profile.noCharactersSub")}</p>
               <Link
                 to="/create"
                 className="inline-flex items-center gap-2 rounded-full border border-border/60 px-5 py-2.5 text-sm hover:border-primary/40 transition"
               >
-                Share your first story <ArrowRight className="h-3.5 w-3.5" />
+                {t("profile.shareFirst")} <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
           )}
@@ -148,11 +150,9 @@ const Profile = () => {
         >
           <div className="mb-6 flex items-start justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-primary/90">Responses</p>
-              <h2 className="mt-1 font-display text-2xl">What helpers offered</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Moderated and anonymized — only the best sessions reach you here.
-              </p>
+              <p className="text-xs uppercase tracking-[0.2em] text-primary/90">{t("profile.responses")}</p>
+              <h2 className="mt-1 font-display text-2xl">{t("profile.helpersOffered")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t("profile.moderatedNote")}</p>
             </div>
             {isModerator && <button
               onClick={() => sendDeliveryEmail({
@@ -170,10 +170,8 @@ const Profile = () => {
 
           {deliveries.length === 0 && (
             <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center space-y-2">
-              <p className="font-display text-xl text-foreground/60">No responses yet.</p>
-              <p className="text-sm text-muted-foreground">
-                When a helper has a strong session with one of your characters, it will appear here.
-              </p>
+              <p className="font-display text-xl text-foreground/60">{t("profile.noResponses")}</p>
+              <p className="text-sm text-muted-foreground">{t("profile.noResponsesSub")}</p>
             </div>
           )}
 
@@ -198,13 +196,13 @@ const Profile = () => {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{char?.name ?? "Unknown character"}</p>
                         <p className="text-xs text-muted-foreground">
-                          A helper had a session — {conv.messages.filter((m) => m.role === "user").length} messages
+                          {t("profile.helperSession")} — {conv.messages.filter((m) => m.role === "user").length} {t("profile.messages")}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {isNew && (
                           <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary">
-                            New
+                            {t("profile.isNew")}
                           </span>
                         )}
                         <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -247,7 +245,7 @@ const Profile = () => {
                               }).then(() => alert("Email sent!")).catch((e) => { console.error("[email error]", e); alert("Error: " + JSON.stringify(e)); })}
                               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/40 rounded-full px-3 py-1.5 transition mt-1"
                             >
-                              <Mail className="h-3 w-3" /> Send email
+                              <Mail className="h-3 w-3" /> {t("profile.sendEmail")}
                             </button>
                           </div>
                         </motion.div>
@@ -260,22 +258,57 @@ const Profile = () => {
           )}
         </motion.section>
 
-        {/* Coming soon sections */}
+        {/* Settings */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-14 grid md:grid-cols-2 gap-4"
+          className="mt-14"
         >
-          <div className="glass rounded-2xl p-6 space-y-2 opacity-50">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Settings className="h-4 w-4" />
-              <p className="text-xs uppercase tracking-wider">Coming soon</p>
-            </div>
-            <h3 className="font-display text-lg">Settings & privacy</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Control your data, notification preferences, and account settings.
-            </p>
+          <div className="glass rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setSettingsOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/5 transition"
+            >
+              <div className="flex items-center gap-3">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{t("profile.settings")}</span>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            <AnimatePresence initial={false}>
+              {settingsOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-6 pb-6 pt-2 border-t border-border/40 space-y-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">{t("profile.language")}</p>
+                      <div className="flex gap-2">
+                        {(["en", "es", "it", "fr"] as Language[]).map((l) => (
+                          <button
+                            key={l}
+                            onClick={() => setLang(l)}
+                            className={`rounded-full px-4 py-2 text-sm font-medium border transition ${
+                              lang === l
+                                ? "bg-gradient-amber text-primary-foreground border-transparent shadow-glow"
+                                : "border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40"
+                            }`}
+                          >
+                            {LANGUAGE_LABELS[l]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
 

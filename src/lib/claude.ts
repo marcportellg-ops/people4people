@@ -17,11 +17,58 @@ const client = new Anthropic({
   dangerouslyAllowBrowser: true,
 });
 
+const LANG_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  it: "Italian",
+  fr: "French",
+};
+
+export async function translateCharacterFields(
+  fields: { narratorStory: string; summary: string; longStory: string; intro: string },
+  targetLang: "es" | "it" | "fr",
+): Promise<{ narratorStory: string; summary: string; longStory: string; intro: string }> {
+  const langName = LANG_NAMES[targetLang];
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 800,
+    messages: [{
+      role: "user",
+      content: `Translate the following character content from English to ${langName}. Preserve the exact emotional tone, style, and paragraph structure. For narratorStory, preserve the \\n\\n paragraph breaks exactly. Return ONLY valid JSON — no markdown, no explanation:
+
+{
+  "narratorStory": <translated narrator story, same paragraph structure>,
+  "summary": <translated one-sentence summary>,
+  "longStory": <translated 2-3 sentence story>,
+  "intro": <translated opening line, same first-person voice>
+}
+
+narratorStory: ${fields.narratorStory}
+summary: ${fields.summary}
+longStory: ${fields.longStory}
+intro: ${fields.intro}`,
+    }],
+  });
+  const block = response.content[0];
+  if (block.type !== "text") throw new Error("Unexpected response");
+  const jsonMatch = block.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("No JSON in translation response");
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    narratorStory: parsed.narratorStory ?? fields.narratorStory,
+    summary: parsed.summary ?? fields.summary,
+    longStory: parsed.longStory ?? fields.longStory,
+    intro: parsed.intro ?? fields.intro,
+  };
+}
+
 export async function getCharacterReply(
   character: Character,
-  conversationHistory: { role: "user" | "assistant"; content: string }[]
+  conversationHistory: { role: "user" | "assistant"; content: string }[],
+  language?: string,
 ): Promise<string> {
   const r = character.refinements;
+  const langName = language ? LANG_NAMES[language] ?? "English" : "English";
   const systemPrompt = `You are ${character.name}, a real person seeking emotional support and perspective.
 
 About you:
@@ -47,7 +94,8 @@ How to speak:
 - Speak the way people really talk — a pause before something hard, a sentence that trails off, circling back to the same image.
 - Keep it short: 2 to 3 sentences. Leave room for the helper to respond.
 - React honestly to what they say. If something lands, let it reach you. If they misread you, show the gap.
-- Never break character or mention being an AI.`;
+- Never break character or mention being an AI.
+- IMPORTANT: Always respond in ${langName}. Understand messages written in any language, but always reply in ${langName}.`;
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
