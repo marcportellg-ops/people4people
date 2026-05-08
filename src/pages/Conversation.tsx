@@ -293,9 +293,9 @@ const Conversation = () => {
           <div className="glass rounded-2xl p-4 space-y-3 text-sm">
             <p className="text-muted-foreground leading-relaxed">{character.longStory}</p>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {character.tags.map((t) => (
-                <span key={t} className="rounded-full bg-secondary/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {t}
+              {character.tags.map((tg) => (
+                <span key={tg} className="rounded-full bg-secondary/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {t(`tags.${tg}`)}
                 </span>
               ))}
             </div>

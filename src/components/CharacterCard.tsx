@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Character } from "@/data/characters";
 import { ArrowUpRight, MapPin } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export const CharacterCard = ({ character, index = 0 }: { character: Character; index?: number }) => {
   const [hovered, setHovered] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <motion.div
@@ -43,12 +45,12 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
 
         {/* Tags — top left */}
         <div className="absolute top-3 left-3 right-3 flex flex-wrap gap-1.5 z-10">
-          {character.tags.slice(0, 2).map((t) => (
+          {character.tags.slice(0, 2).map((tg) => (
             <span
-              key={t}
+              key={tg}
               className="rounded-full bg-background/40 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-wider text-foreground/80 border border-border/40"
             >
-              {t}
+              {t(`tags.${tg}`)}
             </span>
           ))}
         </div>
@@ -132,9 +134,9 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
                   className="flex items-center justify-between pt-1"
                 >
                   <div className="flex gap-1">
-                    {character.tags.map((t) => (
-                      <span key={t} className="rounded-full bg-surface/60 border border-border/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
-                        {t}
+                    {character.tags.map((tg) => (
+                      <span key={tg} className="rounded-full bg-surface/60 border border-border/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        {t(`tags.${tg}`)}
                       </span>
                     ))}
                   </div>

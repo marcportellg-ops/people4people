@@ -77,7 +77,7 @@ const Gallery = () => {
                   tg === tag ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {tg}
+                {t(`tags.${tg}`)}
               </button>
             ))}
           </div>
