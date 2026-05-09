@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles } from "lucide-react";
+import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles, Users, Heart, Zap } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { TrustStrip, TrustBadge } from "@/components/Trust";
 import { useAuth } from "@/context/AuthContext";
-import { getMyCharacters, getConversationsForCharacters, getAllConversations, getAllUserCharacters, saveCharacterInsights, getCharacterInsights, type ConversationDoc, type ModerationResult, type CharacterInsights } from "@/lib/db";
+import { getMyCharacters, getConversationsForCharacters, getAllConversations, getAllUserCharacters, saveCharacterInsights, getCharacterInsights, getAllHelpers, setUserLevel, awardImpactTrophy, type ConversationDoc, type ModerationResult, type CharacterInsights, type UserDoc } from "@/lib/db";
 import { synthesizeCharacterInsights } from "@/lib/claude";
 import { characters as hardcodedCharacters, type Character } from "@/data/characters";
+import { LEVEL_META, type Level } from "@/lib/levels";
 
 type Filter = "all" | "deliver" | "review" | "rejected";
+type UserEntry = UserDoc & { uid: string };
 
 const Dashboard = () => {
   const { user, isModerator } = useAuth();
@@ -18,17 +20,21 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [allUsers, setAllUsers] = useState<UserEntry[]>([]);
+  const [impactPending, setImpactPending] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user) return;
     (async () => {
       if (isModerator) {
-        const [firestoreChars, allConvs] = await Promise.all([
+        const [firestoreChars, allConvs, users] = await Promise.all([
           getAllUserCharacters(),
           getAllConversations(),
+          getAllHelpers(),
         ]);
         setMyChars([...hardcodedCharacters, ...firestoreChars]);
         setConversations(allConvs.filter((c) => c.endedAt !== null));
+        setAllUsers(users);
       } else {
         const chars = await getMyCharacters(user.uid);
         setMyChars(chars);
@@ -42,6 +48,21 @@ const Dashboard = () => {
       setLoading(false);
     })();
   }, [user, isModerator]);
+
+  const toggleStar = async (uid: string, currentStar: boolean) => {
+    const newStar = !currentStar;
+    const newLevel: Level = newStar ? "Estrella" : "Semilla";
+    await setUserLevel(uid, newLevel, newStar);
+    setAllUsers((prev) =>
+      prev.map((u) => (u.uid === uid ? { ...u, isStar: newStar, level: newLevel } : u))
+    );
+  };
+
+  const markImpact = async (convId: string, trophyId: "algo_cambio" | "punto_de_giro") => {
+    setImpactPending((p) => ({ ...p, [`${convId}_${trophyId}`]: true }));
+    await awardImpactTrophy(convId, trophyId);
+    setImpactPending((p) => ({ ...p, [`${convId}_${trophyId}`]: false }));
+  };
 
   // Stats
   const totalMessages = conversations.reduce((n, c) => n + c.messages.length, 0);
@@ -238,6 +259,52 @@ const Dashboard = () => {
           </section>
         )}
 
+        {/* User management — moderator only */}
+        {isModerator && !loading && (
+          <section>
+            <div className="flex items-center gap-3 mb-5">
+              <Users className="h-5 w-5 text-primary/70" />
+              <h2 className="font-display text-2xl">Helpers</h2>
+              <span className="rounded-full bg-surface-elevated border border-border/60 px-2.5 py-0.5 text-xs text-muted-foreground">
+                {allUsers.filter((u) => u.alias).length} con alias
+              </span>
+            </div>
+            {allUsers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No users yet.</p>
+            ) : (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {allUsers
+                  .filter((u) => u.alias)
+                  .sort((a, b) => (b.isStar ? 1 : 0) - (a.isStar ? 1 : 0))
+                  .map((u) => {
+                    const level = (u.level ?? "Semilla") as Level;
+                    const meta = LEVEL_META[level];
+                    return (
+                      <div key={u.uid} className="glass rounded-2xl p-4 flex items-center gap-3">
+                        <div className="text-2xl shrink-0">{meta.emoji}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-display text-base truncate">{u.alias ?? "Sin alias"}</p>
+                          <p className="text-xs text-muted-foreground">{level} · {u.currentStreak ?? 0} días</p>
+                        </div>
+                        <button
+                          onClick={() => toggleStar(u.uid, u.isStar ?? false)}
+                          title={u.isStar ? "Quitar Estrella" : "Hacer Estrella"}
+                          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition ${
+                            u.isStar
+                              ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                              : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                          }`}
+                        >
+                          {u.isStar ? "⭐ Estrella" : "Hacer Estrella"}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Conversations */}
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -388,7 +455,7 @@ const Dashboard = () => {
                       )
                     )}
 
-                    {/* Transcript toggle */}
+                    {/* Transcript toggle + impact buttons */}
                     <div className="mt-5 flex flex-wrap gap-2">
                       <button
                         onClick={() => setExpanded(isOpen ? null : conv.id)}
@@ -397,6 +464,28 @@ const Dashboard = () => {
                         <FileText className="h-3.5 w-3.5" />
                         {isOpen ? "Hide transcript" : "View full transcript"}
                       </button>
+                      {isModerator && conv.moderation?.decision === "deliver" && (
+                        <>
+                          <button
+                            onClick={() => markImpact(conv.id, "algo_cambio")}
+                            disabled={impactPending[`${conv.id}_algo_cambio`]}
+                            title="Marcar como conversación significativa"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50"
+                          >
+                            <Heart className="h-3 w-3" />
+                            Significativa
+                          </button>
+                          <button
+                            onClick={() => markImpact(conv.id, "punto_de_giro")}
+                            disabled={impactPending[`${conv.id}_punto_de_giro`]}
+                            title="Marcar como punto de giro"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3.5 py-2 text-xs text-violet-400 hover:bg-violet-500/20 transition disabled:opacity-50"
+                          >
+                            <Zap className="h-3 w-3" />
+                            Punto de giro
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     <AnimatePresence>

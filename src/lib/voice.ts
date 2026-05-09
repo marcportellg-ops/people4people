@@ -14,11 +14,19 @@ const EL_NARRATOR_VOICE  = "21m00Tcm4TlvDq8ikWAM"; // Rachel — calm, cinematic
 
 const FEMALE_NAMES = new Set([
   "Sofia", "Christine", "Martha", "Sana", "Amina", "Elena", "Joan", "Marta",
-  "Laura", "Ana", "Carmen", "Isabel", "María", "Claire", "Emma", "Sarah",
+  "Laura", "Ana", "Carmen", "Isabel", "María", "Claire", "Emma", "Sarah", "Noa",
 ]);
 
 export const getVoiceId = (characterName: string): string =>
   FEMALE_NAMES.has(characterName.split(" ")[0]) ? EL_VOICE_FEMALE : EL_VOICE_MALE;
+
+// Language → ElevenLabs language_code (Castilian Spanish for "es")
+const EL_LANG_CODES: Record<string, string> = { en: "en", es: "es", it: "it", fr: "fr" };
+
+// Language → browser speech recognition locale
+const REC_LANGS: Record<string, string> = {
+  en: "en-US", es: "es-ES", it: "it-IT", fr: "fr-FR",
+};
 
 // ── Support checks ────────────────────────────────────────────────────────────
 export const isSpeechSupported = (): boolean =>
@@ -33,7 +41,7 @@ export function startRecognition(
   onInterim: (text: string) => void,
   onFinal: (text: string) => void,
   onEnd: () => void,
-  options?: { continuous?: boolean },
+  options?: { continuous?: boolean; lang?: string },
 ): SpeechRecognition | null {
   const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!SR) return null;
@@ -41,7 +49,7 @@ export function startRecognition(
   const rec = new SR();
   rec.continuous = options?.continuous ?? false;
   rec.interimResults = true;
-  rec.lang = "en-US";
+  rec.lang = REC_LANGS[options?.lang ?? "en"] ?? "en-US";
 
   rec.onresult = (e) => {
     let interim = "";
@@ -92,13 +100,30 @@ export async function fetchNarratorAudio(text: string): Promise<string | null> {
   }
 }
 
+// ── Emotional voice presets ───────────────────────────────────────────────────
+// stability: lower = more trembling/variable; style: higher = more expressive
+type EmotionalStatus = "Heavy" | "Searching" | "Tender" | "Anxious" | "Withdrawn" | "Hopeful";
+
+const EMOTION_PRESETS: Record<EmotionalStatus, { stability: number; similarity_boost: number; style: number }> = {
+  Heavy:     { stability: 0.25, similarity_boost: 0.82, style: 0.68 }, // crushed, slow, carrying unbearable weight
+  Tender:    { stability: 0.28, similarity_boost: 0.85, style: 0.72 }, // soft, close to tears, emotionally raw
+  Anxious:   { stability: 0.20, similarity_boost: 0.75, style: 0.78 }, // rapid, nervous, high emotional charge
+  Withdrawn: { stability: 0.45, similarity_boost: 0.72, style: 0.32 }, // distant, hollow but not robotic
+  Searching: { stability: 0.30, similarity_boost: 0.78, style: 0.62 }, // hesitant, uncertain, questioning
+  Hopeful:   { stability: 0.42, similarity_boost: 0.80, style: 0.65 }, // warm, earnest, emotionally present
+};
+
+// Tracks the active ElevenLabs Audio element so stopSpeaking() can kill it
+let activeELAudio: HTMLAudioElement | null = null;
+
 // ── ElevenLabs TTS ────────────────────────────────────────────────────────────
 async function speakElevenLabs(
   text: string,
   voiceId: string,
   apiKey: string,
-  opts?: { onStart?: () => void; onEnd?: () => void },
+  opts?: { onStart?: () => void; onEnd?: () => void; emotionalStatus?: string },
 ): Promise<void> {
+  const preset = EMOTION_PRESETS[(opts?.emotionalStatus as EmotionalStatus) ?? "Searching"] ?? EMOTION_PRESETS.Searching;
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",
     headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
@@ -106,9 +131,7 @@ async function speakElevenLabs(
       text,
       model_id: "eleven_multilingual_v2",
       voice_settings: {
-        stability: 0.42,
-        similarity_boost: 0.78,
-        style: 0.35,
+        ...preset,
         use_speaker_boost: true,
       },
     }),
@@ -118,10 +141,12 @@ async function speakElevenLabs(
   const url = URL.createObjectURL(blob);
   return new Promise((resolve) => {
     const audio = new Audio(url);
+    activeELAudio = audio;
     opts?.onStart?.();
-    audio.onended = () => { URL.revokeObjectURL(url); opts?.onEnd?.(); resolve(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); opts?.onEnd?.(); resolve(); };
-    audio.play().catch(() => { opts?.onEnd?.(); resolve(); });
+    const cleanup = () => { URL.revokeObjectURL(url); activeELAudio = null; };
+    audio.onended = () => { cleanup(); opts?.onEnd?.(); resolve(); };
+    audio.onerror = () => { cleanup(); opts?.onEnd?.(); resolve(); };
+    audio.play().catch(() => { cleanup(); opts?.onEnd?.(); resolve(); });
   });
 }
 
@@ -170,6 +195,8 @@ export async function speakText(
   text: string,
   opts?: {
     characterName?: string;
+    gender?: "female" | "male";
+    emotionalStatus?: string;
     narrator?: boolean;
     rate?: number;
     onStart?: () => void;
@@ -180,7 +207,9 @@ export async function speakText(
   if (!opts?.narrator) {
     const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined;
     if (apiKey) {
-      const voiceId = getVoiceId(opts?.characterName ?? "");
+      const voiceId = opts?.gender === "female" ? EL_VOICE_FEMALE
+        : opts?.gender === "male" ? EL_VOICE_MALE
+        : getVoiceId(opts?.characterName ?? "");
       try {
         await speakElevenLabs(text, voiceId, apiKey, opts);
         return;
@@ -194,5 +223,9 @@ export async function speakText(
 }
 
 export function stopSpeaking(): void {
+  if (activeELAudio) {
+    activeELAudio.pause();
+    activeELAudio = null;
+  }
   window.speechSynthesis?.cancel();
 }

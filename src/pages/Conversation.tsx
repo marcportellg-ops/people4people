@@ -1,23 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, ChevronRight, Mic, MicOff, Send, ShieldCheck, Clock, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Mic, MicOff, Send, ShieldCheck, Clock, Volume2, VolumeX, Music } from "lucide-react";
+import { ambient, type AmbientStatus } from "@/lib/ambient";
 import { TopNav } from "@/components/TopNav";
 import { TrustBadge } from "@/components/Trust";
 import { characters, getCharacter, type Character } from "@/data/characters";
-import { getCharacterReply, summarizeConversation, moderateConversation, detectCrisis, generateNarratorStory, translateCharacterFields } from "@/lib/claude";
-import { createConversation, saveMessages, endConversation, getCharacterById, saveConversationSummary, saveConversationModeration, saveNarratorStory, saveCharacterTranslations } from "@/lib/db";
+import { getCharacterReply, summarizeConversation, moderateConversation, detectCrisis, generateNarratorStory, translateCharacterFields, generateDynamicOpening } from "@/lib/claude";
+import { createConversation, saveMessages, endConversation, getCharacterById, saveConversationSummary, saveConversationModeration, saveNarratorStory, saveCharacterTranslations, getPausedConversation, pauseConversation, getUserTrophies, awardTrophies, setUserLevel, updateStreak, rebuildWeeklyRanking, getHelperConversations } from "@/lib/db";
+import { EmotionTagScreen } from "@/components/EmotionTagScreen";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { usePlan } from "@/context/PlanContext";
+import { useUserProfile } from "@/context/UserProfileContext";
+import { TrophyNotification } from "@/components/TrophyNotification";
+import { evaluateTrophies } from "@/lib/trophies";
+import { calculateLevel, LEVEL_META } from "@/lib/levels";
+import { IMPACT_TROPHY_IDS } from "@/lib/trophies";
 
 type Msg = { role: "char" | "user"; text: string; t: string };
+
+// ── Atmospheric color per emotional state ────────────────────────────────────
+const ATMOSPHERE: Record<string, string> = {
+  Heavy:     "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(218 80% 7% / 0.55), transparent)",
+  Withdrawn: "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(220 8%  8% / 0.50), transparent)",
+  Anxious:   "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(142 50% 5% / 0.45), transparent)",
+  Searching: "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(196 55% 6% / 0.45), transparent)",
+  Tender:    "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(30  60% 6% / 0.45), transparent)",
+  Hopeful:   "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(270 45% 8% / 0.42), transparent)",
+};
+
+// ── Emotional typography detection ──────────────────────────────────────────
+const HEAVY_WORDS = new Set([
+  "silence","empty","alone","gone","forget","forgot","loss","lost","never","nothing",
+  "silencio","vacío","solo","sola","ausencia","pérdida","perdido","lejos","nunca","nada","olvidé","olvido",
+  "vide","seul","seule","perdu","disparu","jamais","rien","loin",
+  "silenzio","vuoto","perduto","assenza","mai","niente","lontano",
+]);
+
+function isEmotionallyCharged(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (lower.includes("...") || lower.includes("…")) return true;
+  const words = lower.split(/\s+/).filter(Boolean);
+  const clean = (w: string) => w.replace(/[.,;:!?'"¿¡""'']/g, "");
+  if (words.some((w) => HEAVY_WORDS.has(clean(w))) && words.length <= 14) return true;
+  return false;
+}
 
 const Conversation = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const { t, lang } = useLanguage();
+  const { canConverse, refetch: refetchPlan } = usePlan();
+  const { refetch: refetchProfile } = useUserProfile();
   const navigate = useNavigate();
 
   const [character, setCharacter] = useState<Character | undefined>(
@@ -29,21 +66,60 @@ const Conversation = () => {
   const [input, setInput] = useState("");
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [ended, setEnded] = useState(false);
+  const [fullSession, setFullSession] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [crisisLevel, setCrisisLevel] = useState<"low" | "high" | null>(null);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState<number | null>(null);
+  const [isResumed, setIsResumed] = useState(false);
+  const [showTagScreen, setShowTagScreen] = useState(false);
+  const [musicMuted, setMusicMuted] = useState(false);
+  const [pendingTrophies, setPendingTrophies] = useState<string[]>([]);
+  const [activeTrophy, setActiveTrophy] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Msg[]>([]);
   const recognizerRef = useRef<SpeechRecognition | null>(null);
+  const endedRef = useRef(false);
+  const conversationIdRef = useRef<string | null>(null);
+  const timeLeftRef = useRef(15 * 60);
+  const resumeCheckedRef = useRef(false);
+
+  // Keep refs in sync so the unmount cleanup always has current values
+  useEffect(() => { endedRef.current = ended; }, [ended]);
+  useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+
+  // Start ambient music when character is known; stop on unmount
+  useEffect(() => {
+    if (!character) return;
+    ambient.start(character.emotionalStatus as AmbientStatus);
+    return () => { ambient.stop(); };
+  }, [character?.emotionalStatus]);
+
+  // Handle music mute toggle
+  useEffect(() => { ambient.setMuted(musicMuted); }, [musicMuted]);
 
   // Load from Firestore if not a hardcoded character
   useEffect(() => {
     if (character || !id) return;
     getCharacterById(id).then((c) => { if (c) setCharacter(c); });
   }, [id]);
+
+  // Check for a paused conversation — if found, restore it and skip narrator
+  useEffect(() => {
+    if (!user || !character || resumeCheckedRef.current) return;
+    resumeCheckedRef.current = true;
+    getPausedConversation(user.uid, character.id).then((paused) => {
+      if (!paused || paused.messages.length === 0) return;
+      setConversationId(paused.id);
+      setMessages(paused.messages as Msg[]);
+      setTimeLeft(paused.timeLeft ?? 15 * 60);
+      setIsResumed(true);
+      setPhase("chat");
+    }).catch(() => {});
+  }, [user, character]);
 
   // Lazy-generate translations for non-English languages if not yet saved
   useEffect(() => {
@@ -84,36 +160,80 @@ const Conversation = () => {
     }).catch(() => setPhase("chat"));
   }, [character?.id]);
 
-  // Show intro message only when entering chat phase
+  // Show intro message only when entering chat phase (skip when resuming)
   useEffect(() => {
-    if (phase !== "chat" || !character) return;
-    const t0 = setTimeout(() => {
-      setMessages([{ role: "char", text: character.intro, t: now() }]);
-    }, 600);
-    return () => clearTimeout(t0);
-  }, [phase, character]);
+    if (phase !== "chat" || !character || isResumed) return;
+    let cancelled = false;
 
-  // Create conversation in Firestore only when entering chat phase
+    const showOpening = async () => {
+      const staticFallback = (lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.intro) || character.intro;
+      let introText = staticFallback;
+
+      try {
+        const generated = await generateDynamicOpening(character, lang);
+        if (generated) introText = generated;
+      } catch {
+        // keep staticFallback
+      }
+
+      if (cancelled) return;
+      setMessages([{ role: "char", text: introText, t: now() }]);
+      setSpeaking(true);
+      setSpeakingMsgIdx(0);
+      speakText(introText, {
+        characterName: character.name,
+        gender: character.gender,
+        emotionalStatus: character.emotionalStatus,
+        onEnd: () => { setSpeaking(false); setSpeakingMsgIdx(null); },
+      });
+    };
+
+    const t0 = setTimeout(() => { showOpening(); }, 600);
+    return () => { cancelled = true; clearTimeout(t0); };
+  }, [phase, character?.id]);
+
+  // Create conversation in Firestore only when entering chat phase (skip when resuming)
   useEffect(() => {
-    if (phase !== "chat" || !character || !user) return;
-    createConversation(character.id, user.uid).then(setConversationId).catch(() => {});
-  }, [phase, character, user]);
+    if (phase !== "chat" || !character || !user || isResumed) return;
+    if (!canConverse) { navigate("/subscribe"); return; }
+    createConversation(character.id, user.uid).then((id) => {
+      setConversationId(id);
+      refetchPlan();
+    }).catch(() => {});
+  }, [phase, character, user, isResumed]);
 
   // Countdown timer — only runs in chat phase
   useEffect(() => {
     if (phase !== "chat" || ended) return;
-    if (timeLeft <= 0) { setEnded(true); return; }
+    if (timeLeft <= 0) { setFullSession(true); setEnded(true); setShowTagScreen(true); return; }
     const i = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
     return () => clearInterval(i);
   }, [phase, ended, timeLeft]);
 
+  // Drain trophy notification queue one at a time
+  useEffect(() => {
+    if (activeTrophy || pendingTrophies.length === 0) return;
+    const [next, ...rest] = pendingTrophies;
+    setActiveTrophy(next);
+    setPendingTrophies(rest);
+  }, [activeTrophy, pendingTrophies]);
+
   // Keep messages ref in sync for summarization
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // When session ends: save to Firestore + summarize + moderate
+  // Stop audio + pause conversation when leaving the page
+  useEffect(() => () => {
+    stopSpeaking();
+    if (!endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
+      pauseConversation(conversationIdRef.current, timeLeftRef.current).catch(() => {});
+    }
+  }, []);
+
+  // When session ends: save + summarize + moderate + trophies + level + ranking
   useEffect(() => {
-    if (!ended || !conversationId || !character) return;
+    if (!ended || !conversationId || !character || !user) return;
     endConversation(conversationId).catch(() => {});
+    updateStreak(user.uid).catch(() => {});
     const msgs = messagesRef.current.slice(1); // skip character intro
     if (msgs.filter((m) => m.role === "user").length >= 2) {
       const creatorEmail = (character as any).creatorEmail as string | undefined;
@@ -123,7 +243,7 @@ const Conversation = () => {
       ]).then(async ([s, m]) => {
         await saveConversationSummary(conversationId, s);
         await saveConversationModeration(conversationId, m);
-        console.log("[deliver] decision:", m.decision, "creatorEmail:", creatorEmail);
+
         if (m.decision === "deliver" && creatorEmail) {
           sendDeliveryEmail({
             toEmail: creatorEmail,
@@ -131,12 +251,49 @@ const Conversation = () => {
             summary: s.summary,
             highlight: s.highlight,
             recommendations: s.recommendations,
-          }).then(() => console.log("[email] sent to", creatorEmail))
-            .catch((e) => console.error("[email] failed:", e));
+          }).catch(() => {});
         }
+
+        // Trophies + level + ranking
+        try {
+          const [existingTrophies, allConvs] = await Promise.all([
+            getUserTrophies(user.uid),
+            getHelperConversations(user.uid),
+          ]);
+          const existingIds = new Set(existingTrophies.map((t) => t.id));
+          // Build the completed conv list including this one with moderation
+          const completedConv = { ...messagesRef.current, helperId: user.uid, characterId: character.id, endedAt: { toMillis: () => Date.now() } as any, startedAt: null, messages: messagesRef.current, id: conversationId, moderation: m, seenByCreator: false };
+
+          const newIds = evaluateTrophies({
+            allConvs: [...allConvs, completedConv],
+            newConv: completedConv,
+            newScore: m.score,
+            characterLocation: character.location,
+            fullSession,
+            existingTrophyIds: existingIds,
+          });
+
+          if (newIds.length > 0) {
+            await awardTrophies(user.uid, newIds);
+            setPendingTrophies(newIds);
+          }
+
+          // Recalculate level
+          const allCompleted = [...allConvs, completedConv];
+          const quality = allCompleted.filter((c) => (c.moderation?.score ?? 0) >= 7).length;
+          const updatedTrophies = [...existingTrophies, ...newIds.map((id) => ({ id } as any))];
+          const hasImpact = updatedTrophies.some((t) => IMPACT_TROPHY_IDS.includes(t.id));
+          const newLevel = calculateLevel(quality, hasImpact, false);
+          await setUserLevel(user.uid, newLevel);
+
+          // Rebuild weekly ranking
+          rebuildWeeklyRanking().catch(() => {});
+
+          refetchProfile();
+        } catch { /* non-critical */ }
       }).catch(() => {});
     }
-  }, [ended, conversationId, character]);
+  }, [ended, conversationId, character, user]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -183,7 +340,6 @@ const Conversation = () => {
       recognizerRef.current?.stop();
       recognizerRef.current = null;
       setListening(false);
-      setInput("");
       return;
     }
     if (!isSpeechSupported()) return;
@@ -193,11 +349,11 @@ const Conversation = () => {
       (interim) => setInput(interim),
       (final) => {
         setListening(false);
-        setInput("");
+        setInput(final);
         recognizerRef.current = null;
-        send(final);
       },
       () => { setListening(false); recognizerRef.current = null; },
+      { lang },
     );
     recognizerRef.current = rec;
     if (rec) setListening(true);
@@ -233,16 +389,15 @@ const Conversation = () => {
           { role: "char", text: reply, t: charT },
         ]);
       }
-      // Auto-speak reply if voice is enabled
-      if (voiceEnabled || textOverride) {
-        setVoiceEnabled(true);
-        setSpeaking(true);
-        setSpeakingMsgIdx(replyIdx);
-        speakText(reply, {
-          characterName: character.name,
-          onEnd: () => { setSpeaking(false); setSpeakingMsgIdx(null); },
-        });
-      }
+      // Always speak character reply
+      setSpeaking(true);
+      setSpeakingMsgIdx(replyIdx);
+      speakText(reply, {
+        characterName: character.name,
+        gender: character.gender,
+        emotionalStatus: character.emotionalStatus,
+        onEnd: () => { setSpeaking(false); setSpeakingMsgIdx(null); },
+      });
       // Run crisis detection if not already flagged at high level
       if (crisisLevel !== "high") {
         detectCrisis(updatedMsgs.slice(-8).map((m) => ({ role: m.role, text: m.text })))
@@ -258,10 +413,15 @@ const Conversation = () => {
     }
   };
 
-  const endSession = () => setEnded(true);
+  const endSession = () => { setEnded(true); setShowTagScreen(true); };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <motion.div
+      className="min-h-screen relative overflow-hidden"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 1.5, ease: "easeIn" }}
+    >
       <TopNav />
 
       {/* Ambient portrait backdrop */}
@@ -272,6 +432,14 @@ const Conversation = () => {
           className="absolute inset-0 h-full w-full object-cover opacity-20 blur-2xl scale-110"
         />
         <div className="absolute inset-0 bg-background/85" />
+        {/* Atmospheric color tint per emotionalStatus */}
+        <motion.div
+          className="absolute inset-0"
+          animate={{ opacity: 1 }}
+          initial={{ opacity: 0 }}
+          transition={{ duration: 4 }}
+          style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }}
+        />
       </div>
 
       <div className="container pt-24 pb-12 grid lg:grid-cols-[420px_1fr] gap-8">
@@ -382,35 +550,40 @@ const Conversation = () => {
           {/* Transcript */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 md:px-8 py-6 space-y-4">
             <AnimatePresence initial={false}>
-              {messages.map((m, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div className={`max-w-[80%] ${m.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 px-1 flex items-center gap-1.5">
-                      {m.role === "user" ? "You" : character.name} · {m.t}
-                      {speakingMsgIdx === i && (
-                        <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity }}>
-                          <Volume2 className="h-2.5 w-2.5 text-primary" />
-                        </motion.span>
-                      )}
-                    </span>
-                    <div
-                      className={`rounded-2xl px-4 py-3 leading-relaxed ${
-                        m.role === "user"
-                          ? "bg-primary/15 text-foreground border border-primary/20 rounded-br-sm"
-                          : "bg-surface-elevated/80 border border-border/60 rounded-bl-sm"
-                      } ${speakingMsgIdx === i ? "ring-1 ring-primary/30" : ""}`}
-                    >
-                      {m.text}
+              {messages.map((m, i) => {
+                const charged = m.role === "char" && isEmotionallyCharged(m.text);
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className={`max-w-[80%] ${m.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 px-1 flex items-center gap-1.5">
+                        {m.role === "user" ? "You" : character.name} · {m.t}
+                        {speakingMsgIdx === i && (
+                          <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity }}>
+                            <Volume2 className="h-2.5 w-2.5 text-primary" />
+                          </motion.span>
+                        )}
+                      </span>
+                      <div
+                        className={`rounded-2xl px-4 py-3 leading-relaxed transition-all ${
+                          m.role === "user"
+                            ? "bg-primary/15 text-foreground border border-primary/20 rounded-br-sm"
+                            : `bg-surface-elevated/80 border border-border/60 rounded-bl-sm ${
+                                charged ? "tracking-[0.025em] text-foreground border-border/80" : "text-foreground/90"
+                              }`
+                        } ${speakingMsgIdx === i ? "ring-1 ring-primary/30" : ""}`}
+                      >
+                        {m.text}
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
 
             {isTyping && (
@@ -485,7 +658,31 @@ const Conversation = () => {
           )}
         </section>
       </div>
-    </div>
+
+      <TrophyNotification
+        trophyId={activeTrophy}
+        onDismiss={() => setActiveTrophy(null)}
+      />
+
+      <AnimatePresence>
+        {showTagScreen && (
+          <EmotionTagScreen
+            conversationId={conversationId}
+            characterId={character.id}
+            onDone={() => setShowTagScreen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Ambient music mute button */}
+      <button
+        onClick={() => setMusicMuted((m) => !m)}
+        title={musicMuted ? "Activar música" : "Silenciar música"}
+        className="fixed bottom-6 right-6 z-40 h-9 w-9 grid place-items-center rounded-full bg-background/60 backdrop-blur border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition"
+      >
+        <Music className={`h-3.5 w-3.5 transition ${musicMuted ? "opacity-25" : "opacity-80"}`} />
+      </button>
+    </motion.div>
   );
 };
 
@@ -558,6 +755,7 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
   const [audioLoading, setAudioLoading] = useState(true);
   const [revealedCount, setRevealedCount] = useState(0);
   const [narrationDone, setNarrationDone] = useState(false);
+  const [exiting, setExiting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const paragraphTimestamps = useRef<number[]>([]);
@@ -618,14 +816,20 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
   }, [audioLoading, audioUrl]);
 
   const handleEnter = () => {
+    if (exiting) return;
     timersRef.current.forEach(clearTimeout);
     if (audioRef.current) { audioRef.current.pause(); }
     else { stopSpeaking(); }
-    onEnter();
+    setExiting(true);
+    setTimeout(onEnter, 950);
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex flex-col">
+    <motion.div
+      className="min-h-screen relative overflow-hidden flex flex-col"
+      animate={{ opacity: exiting ? 0 : 1, scale: exiting ? 0.985 : 1 }}
+      transition={{ duration: 0.95, ease: [0.65, 0, 0.35, 1] }}
+    >
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -644,6 +848,10 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
           className="absolute inset-0 h-full w-full object-cover opacity-20 blur-3xl scale-110"
         />
         <div className="absolute inset-0 bg-background/88" />
+        <div
+          className="absolute inset-0"
+          style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }}
+        />
       </div>
 
       {/* Skip button */}
@@ -727,7 +935,7 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 

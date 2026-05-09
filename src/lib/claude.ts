@@ -24,6 +24,68 @@ const LANG_NAMES: Record<string, string> = {
   fr: "French",
 };
 
+const ALIAS_PROMPTS: Record<string, string> = {
+  es: `Genera 5 aliases únicos en español para un helper anónimo en una plataforma de empatía. Formato: "Adjetivo Poético + Elemento Natural". Ejemplos del estilo: Voz Serena, Marea Quieta, Eco Profundo, Luz Tardía, Raíz Firme. Devuelve SOLO los 5 aliases, uno por línea, sin numeración ni explicación.`,
+  en: `Generate 5 unique aliases in English for an anonymous helper on an empathy platform. Format: "Poetic Adjective + Natural Element". Style examples: Quiet Tide, Deep Echo, Late Light, Still Root, Calm River. Return ONLY the 5 aliases, one per line, no numbers or explanation.`,
+  fr: `Génère 5 alias uniques en français pour un helper anonyme sur une plateforme d'empathie. Format: "Adjectif Poétique + Élément Naturel". Exemples: Lumière Douce, Marée Calme, Écho Profond, Racine Ferme, Voix Sereine. Retourne SEULEMENT les 5 alias, un par ligne, sans numéros ni explications.`,
+  it: `Genera 5 alias unici in italiano per un helper anonimo su una piattaforma di empatia. Formato: "Aggettivo Poetico + Elemento Naturale". Esempi di stile: Luce Serena, Onda Quieta, Eco Profondo, Radice Ferma, Voce Calma. Restituisci SOLO i 5 alias, uno per riga, senza numeri o spiegazioni.`,
+};
+
+const ALIAS_FALLBACKS: Record<string, string[]> = {
+  es: ["Voz Serena", "Marea Quieta", "Eco Profundo", "Luz Tardía", "Raíz Firme"],
+  en: ["Quiet Tide", "Deep Echo", "Late Light", "Still Root", "Calm River"],
+  fr: ["Lumière Douce", "Marée Calme", "Écho Profond", "Racine Ferme", "Voix Sereine"],
+  it: ["Luce Serena", "Onda Quieta", "Eco Profondo", "Radice Ferma", "Voce Calma"],
+};
+
+export async function generateAliases(lang = "es"): Promise<string[]> {
+  const prompt = ALIAS_PROMPTS[lang] ?? ALIAS_PROMPTS.es;
+  const fallback = ALIAS_FALLBACKS[lang] ?? ALIAS_FALLBACKS.es;
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 120,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const block = response.content[0];
+  if (block.type !== "text") return fallback;
+  return block.text.trim().split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 5);
+}
+
+export async function generateDynamicOpening(
+  character: { name: string; age: number; location: string; longStory: string; emotionalStatus: string; tags: string[] },
+  lang?: string,
+): Promise<string> {
+  const langName = lang ? LANG_NAMES[lang] ?? "English" : "English";
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 80,
+    messages: [{
+      role: "user",
+      content: `Write a single opening line for ${character.name}, ${character.age} years old, ${character.location}.
+
+Their situation: ${character.longStory}
+Emotional state: ${character.emotionalStatus}
+
+Rules:
+- First person, present-tense feel
+- A specific sensory moment or image — NOT an explanation of their situation
+- Cinematic, drops the listener inside the scene
+- Examples of the right style:
+  • "I've been sleeping on the couch for three weeks, even though the bed is empty."
+  • "This morning I set out two cups of coffee without thinking."
+  • "I still check my phone at the same time every day. Nothing."
+  • "I got dressed again this morning. It's the only thing that still feels real."
+- Max 120 characters
+- No quotation marks
+- Write in ${langName}
+
+Return ONLY the opening line — nothing else.`,
+    }],
+  });
+  const block = response.content[0];
+  return block.type === "text" ? block.text.trim().replace(/^[""]|[""]$/g, "") : "";
+}
+
 export async function translateCharacterFields(
   fields: { narratorStory: string; summary: string; longStory: string; intro: string },
   targetLang: "es" | "it" | "fr",

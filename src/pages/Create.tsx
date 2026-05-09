@@ -11,6 +11,7 @@ import { generatePortraits } from "@/lib/portraits";
 import { isSpeechSupported, startRecognition, fetchNarratorAudio, speakText, stopSpeaking } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { usePlan } from "@/context/PlanContext";
 
 type Step = 0 | 1 | 2 | 3;
 
@@ -59,6 +60,7 @@ const Create = () => {
   const navigate = useNavigate();
   const { user, isModerator } = useAuth();
   const { t } = useLanguage();
+  const { canCreate, refetch: refetchPlan } = usePlan();
 
   const startStoryRecognition = () => {
     const rec = startRecognition(
@@ -306,6 +308,7 @@ const Create = () => {
 
   const handlePublish = async () => {
     if (!selectedPortrait) return;
+    if (!canCreate) { navigate("/subscribe"); return; }
     setPublishing(true);
     try {
       const profile = await generateCharacterProfile(story, answers);
@@ -337,6 +340,7 @@ const Create = () => {
       ]).then(([es, it, fr]) =>
         saveCharacterTranslations(charId, { es, it, fr }),
       ).catch(() => {});
+      refetchPlan();
       navigate("/gallery");
     } catch {
       alert("Something went wrong while publishing. Please try again.");

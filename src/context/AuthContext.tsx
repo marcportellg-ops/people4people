@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { onAuthStateChanged, auth, isSuperModerator, type User } from "@/lib/auth";
+import { ensureUserDoc } from "@/lib/db";
 
 type AuthContextType = {
   user: User | null;
@@ -17,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+      if (u) ensureUserDoc(u.uid).catch(() => {});
     });
   }, []);
 

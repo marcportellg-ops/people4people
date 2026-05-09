@@ -15,6 +15,7 @@ export type Character = {
   id: string;
   name: string;
   age: number;
+  gender?: "female" | "male";
   portrait: string;
   intro: string;
   summary: string;
@@ -34,6 +35,8 @@ export type Character = {
     it?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
     fr?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
   };
+  topEmotionTags?: string[];
+  createdAt?: { toMillis: () => number } | null;
 };
 
 export const characters: Character[] = [
@@ -41,8 +44,9 @@ export const characters: Character[] = [
     id: "joan",
     name: "Joan",
     age: 46,
+    gender: "female",
     portrait: joan,
-    intro: "Hi, I'm Joan. I recently separated, and I don't know how to rebuild my life.",
+    intro: "I keep reaching for the phone to tell him things. And then I remember.",
     summary: "Recently separated. Trying to remember who she is on her own.",
     longStory:
       "After 19 years of marriage, the silence at home is the loudest thing she's ever heard. She's not sure if she's allowed to want a new life — or if she even knows how.",
@@ -55,8 +59,9 @@ export const characters: Character[] = [
     id: "marta",
     name: "Marta",
     age: 58,
+    gender: "female",
     portrait: marta,
-    intro: "I'm Marta. My mother passed last spring, and I keep finding her handwriting everywhere.",
+    intro: "I played her voicemail again this morning. Just to hear her voice once.",
     summary: "Grieving her mother. Time stopped, and the world kept moving.",
     longStory:
       "She still keeps her mother's voicemail. She doesn't want closure — she wants to know how to carry it without it crushing her.",
@@ -69,8 +74,9 @@ export const characters: Character[] = [
     id: "david",
     name: "David",
     age: 22,
+    gender: "male",
     portrait: david,
-    intro: "Hey, I'm David. I'm supposed to move out next month and I can't breathe when I think about it.",
+    intro: "I made a list of everything that could go wrong. It was four pages.",
     summary: "Anxious about leaving home for the first time.",
     longStory:
       "Everyone says it's exciting. He smiles and nods. At night, he lies awake counting the things that could go wrong.",
@@ -83,8 +89,9 @@ export const characters: Character[] = [
     id: "amina",
     name: "Amina",
     age: 34,
+    gender: "female",
     portrait: amina,
-    intro: "I'm Amina. The debt is bigger than me now, and I don't know how to tell anyone.",
+    intro: "I checked the balance at 2am again. Then turned my phone face-down and pretended I hadn't.",
     summary: "Overwhelmed by debt. Carrying it alone, in silence.",
     longStory:
       "She opens the bank app, then closes it. She hasn't told her partner. She wonders if asking for help means she's already failed.",
@@ -97,8 +104,9 @@ export const characters: Character[] = [
     id: "luis",
     name: "Luis",
     age: 41,
+    gender: "male",
     portrait: luis,
-    intro: "I'm Luis. I lost my job in February. The loneliest part isn't the money.",
+    intro: "I got a call this afternoon. Spam. I still felt something when I saw the screen light up.",
     summary: "Lonely after losing his job. Days feel shapeless.",
     longStory:
       "He used to be the one people called. Now his phone is quiet, and he's not sure who he is without the title on a business card.",
@@ -111,8 +119,9 @@ export const characters: Character[] = [
     id: "sana",
     name: "Sana",
     age: 37,
+    gender: "female",
     portrait: sana,
-    intro: "I'm Sana. I'm successful by every measure — and I've never felt so empty.",
+    intro: "I got the promotion. I sat in my car outside the office and waited to feel something.",
     summary: "Quiet burnout under a polished life.",
     longStory:
       "She built the life she was told to want. The view from the top is grey. She's afraid to admit it out loud.",
@@ -125,8 +134,9 @@ export const characters: Character[] = [
     id: "marcus",
     name: "Marcus",
     age: 62,
+    gender: "male",
     portrait: marcus,
-    intro: "Marcus. My grandson stopped calling. I think I said something wrong, and I don't know what.",
+    intro: "I wrote the message nine times. I still haven't sent it.",
     summary: "Estranged from family. Wants to reach back, gently.",
     longStory:
       "He's old enough to know pride costs more than apologies. He doesn't want to be right. He wants Sunday dinners back.",
@@ -139,8 +149,9 @@ export const characters: Character[] = [
     id: "elena",
     name: "Elena",
     age: 28,
+    gender: "female",
     portrait: elena,
-    intro: "I'm Elena. I've been hiding a part of myself from everyone I love.",
+    intro: "I've been carrying this so long I've forgotten what it felt like not to.",
     summary: "Carrying a truth she hasn't shared yet.",
     longStory:
       "She's rehearsed the conversation a hundred times in the shower. She doesn't need advice — she needs to feel less alone before she says it out loud.",
@@ -153,8 +164,9 @@ export const characters: Character[] = [
     id: "tomas",
     name: "Tomás",
     age: 35,
+    gender: "male",
     portrait: tomas,
-    intro: "I'm Tomás. The company I built for eight years closed last month. I still haven't told my parents.",
+    intro: "I still get dressed every morning at the same time. It's the only thing left that feels normal.",
     summary: "Lost his business after 8 years. Hiding it. Questioning everything he believed about himself.",
     longStory:
       "He spent his twenties building something that was finally working. Then it wasn't. He still gets dressed every morning so his family doesn't notice. The hardest part isn't the money — it's becoming someone who failed.",
@@ -173,8 +185,9 @@ export const characters: Character[] = [
     id: "robert",
     name: "Robert",
     age: 67,
+    gender: "male",
     portrait: robert,
-    intro: "Robert. My wife of 40 years passed in March. My children think I'm coping rather well. I'm not sure I am.",
+    intro: "Her reading glasses are still on the nightstand where she left them. I can't move them.",
     summary: "Widowed after 40 years. Holding it together for everyone else while quietly falling apart.",
     longStory:
       "He spent four decades being the steady one. Margaret was the warmth; he was the structure. Now the structure has nothing to hold up, and he doesn't know who he is without her beside him at the dinner table.",
@@ -193,8 +206,9 @@ export const characters: Character[] = [
     id: "sofia",
     name: "Sofia",
     age: 24,
+    gender: "female",
     portrait: sofia,
-    intro: "I'm Sofia. I moved to London six months ago for my dream job. I've never been lonelier in my life.",
+    intro: "I went to a coffee shop on Saturday just to be around people. I didn't talk to anyone.",
     summary: "Living alone in a new city. Loneliness hiding behind a decision everyone calls brave.",
     longStory:
       "Everyone back home tells her how brave she is. At 11pm on a Tuesday, brave feels a lot like empty. She second-guesses herself constantly and doesn't want to admit it to anyone who believes in her.",
@@ -213,8 +227,9 @@ export const characters: Character[] = [
     id: "christine",
     name: "Christine",
     age: 48,
+    gender: "female",
     portrait: christine,
-    intro: "I'm Christine. My youngest left for college last month. I thought I was ready. I was not.",
+    intro: "I made two cups of coffee this morning. Out of habit. She's been gone a month.",
     summary: "Empty nest after 20 years as a mother. Lost without the role that gave everything meaning.",
     longStory:
       "She was good at it — being a mother was the thing she was genuinely, completely good at. Now the house is clean and quiet, and she doesn't know what to do with a person who has no one left to take care of.",

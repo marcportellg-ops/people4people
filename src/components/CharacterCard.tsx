@@ -64,6 +64,18 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
           <div className="flex items-end justify-between">
             <div>
               <h3 className="font-display text-2xl leading-none">{character.name}</h3>
+              {character.topEmotionTags && character.topEmotionTags.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {character.topEmotionTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-background/30 backdrop-blur px-1.5 py-0.5 text-[9px] text-foreground/75"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">{character.age} · {character.location}</p>
             </div>
             <span className="text-[10px] uppercase tracking-[0.12em] text-primary/90">{character.emotionalStatus}</span>
