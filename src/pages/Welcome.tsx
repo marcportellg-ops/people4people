@@ -6,7 +6,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { markOnboarded } from "@/lib/db";
-import type { Language } from "@/lib/translations";
+import { LANGUAGE_LABELS, type Language } from "@/lib/translations";
+import { cn } from "@/lib/utils";
 
 type StepDef = { icon: React.ReactNode; title: string; body: string };
 
@@ -22,7 +23,7 @@ const CONTENT: Record<Language, {
   es: {
     eyebrow: "People4People",
     headline: "Hay personas reales\ndetrás de cada historia.",
-    sub: "Antes de entrar, entende cómo funciona.",
+    sub: "Antes de entrar, entiende cómo funciona.",
     steps: [
       {
         icon: <Edit3 className="h-6 w-6" />,
@@ -119,16 +120,93 @@ const CONTENT: Record<Language, {
     cta2: "Voglio condividere qualcosa",
     ctaSub: "Prova prima. Decidi dopo.",
   },
+  de: {
+    eyebrow: "People4People",
+    headline: "Hinter jeder Geschichte\nstecken echte Menschen.",
+    sub: "Bevor du beginnst, verstehe wie das hier funktioniert.",
+    steps: [
+      {
+        icon: <Edit3 className="h-6 w-6" />,
+        title: "Jemand teilt etwas Echtes",
+        body: "Eine Person schreibt, was sie durchmacht — was sie fühlt, was sie niemandem in ihrer Nähe sagen kann.",
+      },
+      {
+        icon: <Sparkles className="h-6 w-6" />,
+        title: "Es wird zu einem Charakter",
+        body: "Diese Geschichte wird zu einem Charakter mit einem Namen und einer Stimme. Die echte Person bleibt geschützt und anonym.",
+      },
+      {
+        icon: <Heart className="h-6 w-6" />,
+        title: "Du redest. Deine Hilfe kommt an.",
+        body: "Du kommst und sprichst mit diesem Charakter. Was du anbietest — deine Anwesenheit, dein Zuhören — kommt echt und anonym bei demjenigen an, der es braucht.",
+      },
+    ],
+    cta1: "Ich möchte jemandem helfen",
+    cta2: "Ich möchte etwas von mir teilen",
+    ctaSub: "Erst ausprobieren. Dann entscheiden.",
+  },
+  pt: {
+    eyebrow: "People4People",
+    headline: "Há pessoas reais\ndetrás de cada história.",
+    sub: "Antes de começar, percebe como isto funciona.",
+    steps: [
+      {
+        icon: <Edit3 className="h-6 w-6" />,
+        title: "Alguém partilha algo real",
+        body: "Uma pessoa escreve o que está a viver — o que sente, o que não consegue dizer a ninguém próximo.",
+      },
+      {
+        icon: <Sparkles className="h-6 w-6" />,
+        title: "Torna-se uma personagem",
+        body: "Essa história transforma-se numa personagem com nome e voz. A pessoa real fica protegida, no anonimato.",
+      },
+      {
+        icon: <Heart className="h-6 w-6" />,
+        title: "Tu falas. A tua ajuda chega.",
+        body: "Chegas e falas com essa personagem. O que ofereces — a tua presença, a tua escuta — chega de forma real e anónima a quem precisa.",
+      },
+    ],
+    cta1: "Quero ajudar alguém",
+    cta2: "Quero partilhar algo meu",
+    ctaSub: "Experimenta primeiro. Decide depois.",
+  },
+  ca: {
+    eyebrow: "People4People",
+    headline: "Hi ha persones reals\ndarrere de cada història.",
+    sub: "Abans d'entrar, entén com funciona.",
+    steps: [
+      {
+        icon: <Edit3 className="h-6 w-6" />,
+        title: "Algú comparteix alguna cosa real",
+        body: "Una persona escriu el que viu — el que sent, el que no pot dir-li a ningú proper.",
+      },
+      {
+        icon: <Sparkles className="h-6 w-6" />,
+        title: "Es converteix en un personatge",
+        body: "Aquella història es transforma en un personatge amb nom i veu. La persona real queda protegida, en l'anonimat.",
+      },
+      {
+        icon: <Heart className="h-6 w-6" />,
+        title: "Tu parles. La teva ajuda arriba.",
+        body: "Arribes i parles amb aquell personatge. El que ofereixes — la teva presència, la teva escolta — arriba de forma real i anònima a qui ho necessita.",
+      },
+    ],
+    cta1: "Vull ajudar algú",
+    cta2: "Vull compartir alguna cosa meva",
+    ctaSub: "Prova primer. Decideix després.",
+  },
 };
 
+const LANGS: Language[] = ["en", "es", "it", "fr", "de", "pt", "ca"];
+
 const Welcome = () => {
-  const { lang } = useLanguage();
+  const { lang, setLang } = useLanguage();
   const { user } = useAuth();
   const { setOnboardedTrue } = useUserProfile();
   const navigate = useNavigate();
   const [ctaVisible, setCtaVisible] = useState(false);
 
-  const c = CONTENT[lang] ?? CONTENT.es;
+  const c = CONTENT[lang] ?? CONTENT.en;
 
   const goCreate = async () => {
     if (user) await markOnboarded(user.uid).catch(() => {});
@@ -136,7 +214,8 @@ const Welcome = () => {
     navigate("/create");
   };
 
-  const goDemo = () => {
+  const goDemo = async () => {
+    if (user) await markOnboarded(user.uid).catch(() => {});
     setOnboardedTrue();
     navigate("/demo");
   };
@@ -147,6 +226,24 @@ const Welcome = () => {
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-[600px] w-[600px] rounded-full bg-primary/5 blur-3xl" />
+      </div>
+
+      {/* Language selector */}
+      <div className="absolute top-5 right-6 flex gap-1 flex-wrap justify-end max-w-[220px]">
+        {LANGS.map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[10px] font-mono transition",
+              lang === l
+                ? "text-primary bg-primary/10"
+                : "text-muted-foreground/50 hover:text-muted-foreground",
+            )}
+          >
+            {LANGUAGE_LABELS[l]}
+          </button>
+        ))}
       </div>
 
       <div className="w-full max-w-2xl">
