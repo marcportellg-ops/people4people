@@ -2,11 +2,17 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { signInWithGoogle } from "@/lib/auth";
+import { useLanguage } from "@/context/LanguageContext";
+import { LANGUAGE_LABELS, type Language } from "@/lib/translations";
+import { cn } from "@/lib/utils";
+
+const LANGS: Language[] = ["en", "es", "it", "fr", "de", "pt", "ca"];
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { t, lang, setLang } = useLanguage();
 
   const handleGoogle = async () => {
     setLoading(true);
@@ -15,7 +21,7 @@ const Login = () => {
       await signInWithGoogle();
       navigate("/");
     } catch {
-      setError("Could not sign in. Please try again.");
+      setError(t("login.error"));
     } finally {
       setLoading(false);
     }
@@ -23,10 +29,27 @@ const Login = () => {
 
   return (
     <div className="min-h-screen grid place-items-center relative overflow-hidden">
-      {/* Ambient background */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-primary/5" />
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
+      </div>
+
+      {/* Language selector */}
+      <div className="absolute top-5 right-6 flex gap-1 flex-wrap justify-end max-w-[200px]">
+        {LANGS.map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[10px] font-mono transition",
+              lang === l
+                ? "text-primary bg-primary/10"
+                : "text-muted-foreground/50 hover:text-muted-foreground",
+            )}
+          >
+            {LANGUAGE_LABELS[l]}
+          </button>
+        ))}
       </div>
 
       <motion.div
@@ -38,10 +61,12 @@ const Login = () => {
         <div className="space-y-3">
           <p className="text-xs uppercase tracking-[0.22em] text-primary/90">People4People</p>
           <h1 className="font-display text-4xl text-gradient leading-tight">
-            A place to be<br />heard.
+            {t("login.headline").split("\n").map((line, i, arr) => (
+              <span key={i}>{line}{i < arr.length - 1 ? <br /> : null}</span>
+            ))}
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Sign in to start a conversation, or to share a story that someone else might need.
+            {t("login.sub")}
           </p>
         </div>
 
@@ -57,7 +82,7 @@ const Login = () => {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
             </svg>
-            {loading ? "Signing in…" : "Continue with Google"}
+            {loading ? t("login.signingIn") : t("login.continueGoogle")}
           </button>
 
           {error && (
@@ -66,7 +91,7 @@ const Login = () => {
         </div>
 
         <p className="text-[11px] text-muted-foreground/60 leading-relaxed max-w-xs">
-          Your identity stays private. We never share your name or email with the people you speak to.
+          {t("login.privacy")}
         </p>
       </motion.div>
     </div>

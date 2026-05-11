@@ -49,6 +49,37 @@ async function pollForImages(generationId: string): Promise<string[]> {
   throw new Error("Portrait generation timed out — please try again");
 }
 
+export async function generateEmotionalPortrait(
+  personDescription: string,
+  age: number,
+): Promise<string> {
+  const prompt = [
+    `Photorealistic portrait photo`,
+    `Person: ${personDescription}, ${age} years old`,
+    `Bust shot, full head and upper chest visible, ears fully showing, wide framing`,
+    `Dark textured background, warm Rembrandt lighting from upper left`,
+    `emotional close-up, eyes slightly downcast, subtle vulnerability in expression, same person same style`,
+    `8k, hyperrealistic, cinematic`,
+  ].join(". ");
+
+  const res = await fetch(`${BASE}/generations`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      prompt,
+      modelId: "1dd50843-d653-4516-a8e3-f0238ee453ff",
+      width: 512,
+      height: 768,
+      num_images: 1,
+    }),
+  });
+  if (!res.ok) throw new Error(`Leonardo error ${res.status}`);
+  const data = await res.json();
+  const images = await pollForImages(data.sdGenerationJob.generationId);
+  if (images.length === 0) throw new Error("No emotional portrait generated");
+  return images[0];
+}
+
 export async function generatePortraits(
   personDescription: string,
   age: number,

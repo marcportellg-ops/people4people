@@ -127,7 +127,7 @@ const Profile = () => {
                 {levelEmoji} {level}
               </span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground/60 italic">Nombre real oculto</p>
+            <p className="mt-1 text-xs text-muted-foreground/60 italic">{t("profile.nameHidden")}</p>
           </div>
           <button
             onClick={signOutUser}
@@ -149,7 +149,7 @@ const Profile = () => {
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              {tab === "helper" ? "Como Helper" : "Como Creador"}
+              {tab === "helper" ? t("profile.tabHelper") : t("profile.tabCreator")}
               {tab === "helper" && unreadMessages > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[9px] text-primary-foreground font-medium grid place-items-center">
                   {unreadMessages}
@@ -172,26 +172,26 @@ const Profile = () => {
             >
               {/* Stats row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard label="Nivel" value={`${levelEmoji} ${level}`} sub={LEVEL_META[level].description} />
-                <StatCard label="Racha" value={`${streak}d`} sub="días consecutivos" />
-                <StatCard label="Score medio" value={avgScore > 0 ? avgScore.toFixed(1) : "—"} sub="de tus sesiones" />
-                <StatCard label="Sesiones de calidad" value={String(qualitySessions)} sub="score ≥ 7" />
+                <StatCard label={t("profile.statLevel")} value={`${levelEmoji} ${level}`} sub={LEVEL_META[level].description} />
+                <StatCard label={t("profile.statStreak")} value={`${streak}d`} sub={t("profile.statStreakSub")} />
+                <StatCard label={t("profile.statAvgScore")} value={avgScore > 0 ? avgScore.toFixed(1) : "—"} sub={t("profile.statAvgScoreSub")} />
+                <StatCard label={t("profile.statQuality")} value={String(qualitySessions)} sub={t("profile.statQualitySub")} />
               </div>
 
               {/* Messages from creators */}
               <section>
                 <div className="flex items-center gap-3 mb-5">
                   <MessageSquare className="h-5 w-5 text-primary/70" />
-                  <h2 className="font-display text-2xl">Mensajes</h2>
+                  <h2 className="font-display text-2xl">{t("profile.messagesSection")}</h2>
                   {unreadMessages > 0 && (
                     <span className="rounded-full bg-primary/15 border border-primary/25 px-2 py-0.5 text-xs text-primary">
-                      {unreadMessages} nuevo{unreadMessages !== 1 ? "s" : ""}
+                      {unreadMessages}
                     </span>
                   )}
                 </div>
                 {helperMessages.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center">
-                    <p className="text-muted-foreground text-sm">Cuando alguien quiera agradecerte, lo verás aquí.</p>
+                    <p className="text-muted-foreground text-sm">{t("profile.noMessagesSub")}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -215,9 +215,7 @@ const Profile = () => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs text-muted-foreground">
-                                  La persona detrás de{" "}
-                                  <span className="font-medium text-foreground/80">{msg.characterName}</span>{" "}
-                                  quiere que sepas algo.
+                                  {t("profile.messageFrom", { name: msg.characterName })}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
@@ -251,14 +249,14 @@ const Profile = () => {
 
               {/* Trophies */}
               <section>
-                <h2 className="font-display text-2xl mb-5">Trofeos</h2>
+                <h2 className="font-display text-2xl mb-5">{t("profile.trophiesSection")}</h2>
                 {profileLoading ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[0,1,2,3].map((i) => <div key={i} className="h-28 rounded-2xl bg-surface-elevated/60 animate-pulse" />)}
                   </div>
                 ) : trophies.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center">
-                    <p className="text-muted-foreground text-sm">Completa conversaciones para desbloquear trofeos.</p>
+                    <p className="text-muted-foreground text-sm">{t("profile.noTrophiesSub")}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -277,7 +275,7 @@ const Profile = () => {
                             <p className="text-sm font-medium leading-tight">{def.name}</p>
                             {trophy.isSecret && (
                               <span className="inline-flex items-center gap-1 text-[10px] text-primary/80 uppercase tracking-wider mt-0.5">
-                                <Lock className="h-2.5 w-2.5" /> secreto
+                                <Lock className="h-2.5 w-2.5" /> {t("profile.secret")}
                               </span>
                             )}
                             <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{def.description}</p>
@@ -522,7 +520,7 @@ const Profile = () => {
                     <div>
                       <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">{t("profile.language")}</p>
                       <div className="flex gap-2">
-                        {(["en", "es", "it", "fr"] as Language[]).map((l) => (
+                        {(["en", "es", "it", "fr", "de", "pt", "ca"] as Language[]).map((l) => (
                           <button key={l} onClick={() => setLang(l)} className={`rounded-full px-4 py-2 text-sm font-medium border transition ${lang === l ? "bg-gradient-amber text-primary-foreground border-transparent shadow-glow" : "border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
                             {LANGUAGE_LABELS[l]}
                           </button>

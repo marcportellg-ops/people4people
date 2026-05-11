@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, ChevronRight, Mic, MicOff, Send, ShieldCheck, Clock, Volume2, VolumeX, Music } from "lucide-react";
+import { ChevronRight, Mic, MicOff, Send, Clock, Music, Flame } from "lucide-react";
 import { ambient, type AmbientStatus } from "@/lib/ambient";
-import { TopNav } from "@/components/TopNav";
-import { TrustBadge } from "@/components/Trust";
 import { characters, getCharacter, type Character } from "@/data/characters";
-import { getCharacterReply, summarizeConversation, moderateConversation, detectCrisis, generateNarratorStory, translateCharacterFields, generateDynamicOpening } from "@/lib/claude";
-import { createConversation, saveMessages, endConversation, getCharacterById, saveConversationSummary, saveConversationModeration, saveNarratorStory, saveCharacterTranslations, getPausedConversation, pauseConversation, getUserTrophies, awardTrophies, setUserLevel, updateStreak, rebuildWeeklyRanking, getHelperConversations } from "@/lib/db";
-import { EmotionTagScreen } from "@/components/EmotionTagScreen";
+import {
+  getCharacterReply, summarizeConversation, moderateConversation, detectCrisis,
+  generateNarratorStory, translateCharacterFields, generateDynamicOpening, generateClosingLine,
+} from "@/lib/claude";
+import {
+  createConversation, saveMessages, endConversation, getCharacterById,
+  saveConversationSummary, saveConversationModeration, saveNarratorStory,
+  saveCharacterTranslations, getPausedConversation, pauseConversation, discardPausedConversation,
+  getUserTrophies, awardTrophies, setUserLevel, updateStreak,
+  rebuildWeeklyRanking, getHelperConversations, saveEmotionTags,
+} from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
@@ -17,12 +23,14 @@ import { usePlan } from "@/context/PlanContext";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { TrophyNotification } from "@/components/TrophyNotification";
 import { evaluateTrophies } from "@/lib/trophies";
-import { calculateLevel, LEVEL_META } from "@/lib/levels";
+import { calculateLevel } from "@/lib/levels";
 import { IMPACT_TROPHY_IDS } from "@/lib/trophies";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 type Msg = { role: "char" | "user"; text: string; t: string };
+type CinemaPhase = "entrada" | "conversacion" | "cierre";
 
-// ── Atmospheric color per emotional state ────────────────────────────────────
+// ── Atmospheric color per emotional state ─────────────────────────────────────
 const ATMOSPHERE: Record<string, string> = {
   Heavy:     "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(218 80% 7% / 0.55), transparent)",
   Withdrawn: "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(220 8%  8% / 0.50), transparent)",
@@ -32,14 +40,13 @@ const ATMOSPHERE: Record<string, string> = {
   Hopeful:   "radial-gradient(ellipse 120% 100% at 50% 50%, hsl(270 45% 8% / 0.42), transparent)",
 };
 
-// ── Emotional typography detection ──────────────────────────────────────────
+// ── Emotional typography detection ───────────────────────────────────────────
 const HEAVY_WORDS = new Set([
   "silence","empty","alone","gone","forget","forgot","loss","lost","never","nothing",
   "silencio","vacío","solo","sola","ausencia","pérdida","perdido","lejos","nunca","nada","olvidé","olvido",
   "vide","seul","seule","perdu","disparu","jamais","rien","loin",
   "silenzio","vuoto","perduto","assenza","mai","niente","lontano",
 ]);
-
 function isEmotionallyCharged(text: string): boolean {
   const lower = text.toLowerCase();
   if (lower.includes("...") || lower.includes("…")) return true;
@@ -49,6 +56,42 @@ function isEmotionallyCharged(text: string): boolean {
   return false;
 }
 
+// ── Async typing-dot animation config ────────────────────────────────────────
+const DOT_ANIM = [
+  { duration: 1.15, delay: 0.0,  opacity: [0.15, 0.85, 0.15] as [number, number, number] },
+  { duration: 1.65, delay: 0.35, opacity: [0.25, 1.0,  0.25] as [number, number, number] },
+  { duration: 0.92, delay: 0.78, opacity: [0.1,  0.7,  0.1]  as [number, number, number] },
+];
+
+// ── Cierre tag builder (called inside component to access t()) ────────────────
+const getCierreTagCats = (t: (k: string) => string) => [
+  { label: t("conversation.cierreCat1"), tags: [
+    t("conversation.cierreTag1_1"), t("conversation.cierreTag1_2"), t("conversation.cierreTag1_3"),
+    t("conversation.cierreTag1_4"), t("conversation.cierreTag1_5"),
+  ]},
+  { label: t("conversation.cierreCat2"), tags: [
+    t("conversation.cierreTag2_1"), t("conversation.cierreTag2_2"), t("conversation.cierreTag2_3"),
+    t("conversation.cierreTag2_4"), t("conversation.cierreTag2_5"),
+  ]},
+  { label: t("conversation.cierreCat3"), tags: [
+    t("conversation.cierreTag3_1"), t("conversation.cierreTag3_2"), t("conversation.cierreTag3_3"),
+    t("conversation.cierreTag3_4"), t("conversation.cierreTag3_5"),
+  ]},
+  { label: t("conversation.cierreCat4"), tags: [
+    t("conversation.cierreTag4_1"), t("conversation.cierreTag4_2"), t("conversation.cierreTag4_3"),
+    t("conversation.cierreTag4_4"), t("conversation.cierreTag4_5"),
+  ]},
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (s: number) => {
+  const m = Math.floor(s / 60).toString().padStart(2, "0");
+  const ss = (s % 60).toString().padStart(2, "0");
+  return `${m}:${ss}`;
+};
+const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// ─────────────────────────────────────────────────────────────────────────────
 const Conversation = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -57,10 +100,24 @@ const Conversation = () => {
   const { refetch: refetchProfile } = useUserProfile();
   const navigate = useNavigate();
 
+  // ── Character ─────────────────────────────────────────────────────────────
   const [character, setCharacter] = useState<Character | undefined>(
     id ? getCharacter(id) : undefined,
   );
-  const [phase, setPhase] = useState<"narrator" | "chat">("narrator");
+
+  // ── Phase navigation ──────────────────────────────────────────────────────
+  const [phase, setPhase] = useState<"narrator" | "conversation">("narrator");
+  const [cinemaPhase, setCinemaPhase] = useState<CinemaPhase>("entrada");
+  const [viewingPhase, setViewingPhase] = useState<CinemaPhase>("entrada");
+
+  // ── Entrada state ─────────────────────────────────────────────────────────
+  const [openingText, setOpeningText] = useState<string | null>(null);
+  const [typedChars, setTypedChars] = useState(0);
+  const [typingDone, setTypingDone] = useState(false);
+  const [showEnterBtn, setShowEnterBtn] = useState(false);
+  const [entradaExiting, setEntradaExiting] = useState(false);
+
+  // ── Conversación state ────────────────────────────────────────────────────
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -71,13 +128,35 @@ const Conversation = () => {
   const [crisisLevel, setCrisisLevel] = useState<"low" | "high" | null>(null);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [speakingMsgIdx, setSpeakingMsgIdx] = useState<number | null>(null);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [deepExchangeCount, setDeepExchangeCount] = useState(0);
+  const [showEmotionalPortrait, setShowEmotionalPortrait] = useState(false);
+  const [emotionalPortraitShown, setEmotionalPortraitShown] = useState(false);
+
+  // ── Cierre state ──────────────────────────────────────────────────────────
+  const [closingLine, setClosingLine] = useState("");
+  const [cierreTags, setCierreTags] = useState<string[]>([]);
+  const [showCierreTagUI, setShowCierreTagUI] = useState(false);
+  const [showCierreSkip, setShowCierreSkip] = useState(false);
+  const [cierreSaving, setCierreSaving] = useState(false);
+
+  // ── Navigation modal state ────────────────────────────────────────────────
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // ── Resume draft modal ────────────────────────────────────────────────────
+  const [pausedDraft, setPausedDraft] = useState<{
+    id: string; messages: Msg[]; timeLeft: number;
+  } | null>(null);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
   const [isResumed, setIsResumed] = useState(false);
-  const [showTagScreen, setShowTagScreen] = useState(false);
   const [musicMuted, setMusicMuted] = useState(false);
   const [pendingTrophies, setPendingTrophies] = useState<string[]>([]);
   const [activeTrophy, setActiveTrophy] = useState<string | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Msg[]>([]);
   const recognizerRef = useRef<SpeechRecognition | null>(null);
@@ -85,49 +164,45 @@ const Conversation = () => {
   const conversationIdRef = useRef<string | null>(null);
   const timeLeftRef = useRef(15 * 60);
   const resumeCheckedRef = useRef(false);
+  const skipSaveRef = useRef(false);
 
-  // Keep refs in sync so the unmount cleanup always has current values
+  // ── Ref sync ──────────────────────────────────────────────────────────────
   useEffect(() => { endedRef.current = ended; }, [ended]);
   useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // Start ambient music when character is known; stop on unmount
+  // ── Ambient music ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!character) return;
     ambient.start(character.emotionalStatus as AmbientStatus);
     return () => { ambient.stop(); };
   }, [character?.emotionalStatus]);
-
-  // Handle music mute toggle
   useEffect(() => { ambient.setMuted(musicMuted); }, [musicMuted]);
 
-  // Load from Firestore if not a hardcoded character
+  // ── Load Firestore character ───────────────────────────────────────────────
   useEffect(() => {
     if (character || !id) return;
     getCharacterById(id).then((c) => { if (c) setCharacter(c); });
   }, [id]);
 
-  // Check for a paused conversation — if found, restore it and skip narrator
+  // ── Check for paused conversation → show resume modal ────────────────────
   useEffect(() => {
     if (!user || !character || resumeCheckedRef.current) return;
     resumeCheckedRef.current = true;
     getPausedConversation(user.uid, character.id).then((paused) => {
       if (!paused || paused.messages.length === 0) return;
-      setConversationId(paused.id);
-      setMessages(paused.messages as Msg[]);
-      setTimeLeft(paused.timeLeft ?? 15 * 60);
-      setIsResumed(true);
-      setPhase("chat");
+      setPausedDraft({ id: paused.id, messages: paused.messages as Msg[], timeLeft: paused.timeLeft ?? 15 * 60 });
+      setShowResumeModal(true);
     }).catch(() => {});
   }, [user, character]);
 
-  // Lazy-generate translations for non-English languages if not yet saved
+  // ── Lazy translations ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!character || lang === "en") return;
-    const tl = lang as "es" | "it" | "fr";
+    const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
     const existing = character.translations?.[tl];
     if (existing?.narratorStory && existing.summary && existing.longStory && existing.intro) return;
-    // Only translate Firestore characters (not hardcoded test ones)
     const isFirestoreChar = !characters.find((c) => c.id === character.id);
     if (!isFirestoreChar) return;
     const fields = {
@@ -143,74 +218,91 @@ const Conversation = () => {
     }).catch(() => {});
   }, [character?.id, lang]);
 
-  // If a Firestore character is missing narratorStory, generate and save it
+  // ── NarratorStory generation for Firestore chars ──────────────────────────
   useEffect(() => {
     if (!character) return;
     if (character.narratorStory) return;
-    // Hardcoded characters without a story skip the narrator phase
     const isFirestoreChar = !characters.find((c) => c.id === character.id);
-    if (!isFirestoreChar) { setPhase("chat"); return; }
-
+    if (!isFirestoreChar) { setPhase("conversation"); return; }
     generateNarratorStory(
       { name: character.name, age: character.age, location: character.location, longStory: character.longStory },
       [],
     ).then((story) => {
       setCharacter((c) => c ? { ...c, narratorStory: story } : c);
       saveNarratorStory(character.id, story).catch(() => {});
-    }).catch(() => setPhase("chat"));
+    }).catch(() => setPhase("conversation"));
   }, [character?.id]);
 
-  // Show intro message only when entering chat phase (skip when resuming)
+  // ── Fetch opening text for ENTRADA ────────────────────────────────────────
   useEffect(() => {
-    if (phase !== "chat" || !character || isResumed) return;
-    let cancelled = false;
-
-    const showOpening = async () => {
-      const staticFallback = (lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.intro) || character.intro;
-      let introText = staticFallback;
-
-      try {
-        const generated = await generateDynamicOpening(character, lang);
-        if (generated) introText = generated;
-      } catch {
-        // keep staticFallback
-      }
-
-      if (cancelled) return;
-      setMessages([{ role: "char", text: introText, t: now() }]);
-      setSpeaking(true);
-      setSpeakingMsgIdx(0);
-      speakText(introText, {
-        characterName: character.name,
-        gender: character.gender,
-        emotionalStatus: character.emotionalStatus,
-        onEnd: () => { setSpeaking(false); setSpeakingMsgIdx(null); },
-      });
-    };
-
-    const t0 = setTimeout(() => { showOpening(); }, 600);
-    return () => { cancelled = true; clearTimeout(t0); };
+    if (phase !== "conversation" || !character || isResumed) return;
+    const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
+    const staticFallback = (lang !== "en" && character.translations?.[tl]?.intro) || character.intro;
+    setOpeningText(staticFallback);
+    generateDynamicOpening(character, lang)
+      .then((generated) => { if (generated) setOpeningText(generated); })
+      .catch(() => {});
   }, [phase, character?.id]);
 
-  // Create conversation in Firestore only when entering chat phase (skip when resuming)
+  // ── Typewriter animation ──────────────────────────────────────────────────
   useEffect(() => {
-    if (phase !== "chat" || !character || !user || isResumed) return;
+    if (!openingText || phase !== "conversation" || cinemaPhase !== "entrada" || isResumed) return;
+    setTypedChars(0);
+    setTypingDone(false);
+    setShowEnterBtn(false);
+    let idx = 0;
+    const iv = setInterval(() => {
+      idx++;
+      setTypedChars(idx);
+      if (idx >= openingText.length) { clearInterval(iv); setTypingDone(true); }
+    }, 50);
+    return () => clearInterval(iv);
+  }, [openingText, phase, cinemaPhase, isResumed]);
+
+  // ── Show enter button 2s after typing done ────────────────────────────────
+  useEffect(() => {
+    if (!typingDone || showEnterBtn) return;
+    const tid = setTimeout(() => setShowEnterBtn(true), 2000);
+    return () => clearTimeout(tid);
+  }, [typingDone]);
+
+  // ── Create Firestore conversation when entering CONVERSACIÓN ──────────────
+  useEffect(() => {
+    if (cinemaPhase !== "conversacion" || !character || !user || isResumed) return;
     if (!canConverse) { navigate("/subscribe"); return; }
-    createConversation(character.id, user.uid).then((id) => {
-      setConversationId(id);
+    createConversation(character.id, user.uid).then((cid) => {
+      setConversationId(cid);
       refetchPlan();
     }).catch(() => {});
-  }, [phase, character, user, isResumed]);
+  }, [cinemaPhase, character, user, isResumed]);
 
-  // Countdown timer — only runs in chat phase
+  // ── Countdown timer ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase !== "chat" || ended) return;
-    if (timeLeft <= 0) { setFullSession(true); setEnded(true); setShowTagScreen(true); return; }
-    const i = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
-    return () => clearInterval(i);
-  }, [phase, ended, timeLeft]);
+    if (cinemaPhase !== "conversacion" || ended) return;
+    if (timeLeft <= 0) {
+      setFullSession(true);
+      setEnded(true);
+      triggerCierre();
+      return;
+    }
+    const iv = setInterval(() => setTimeLeft((t) => Math.max(0, t - 1)), 1000);
+    return () => clearInterval(iv);
+  }, [cinemaPhase, ended, timeLeft]);
 
-  // Drain trophy notification queue one at a time
+  // ── Emotional portrait trigger ────────────────────────────────────────────
+  useEffect(() => {
+    if (emotionalPortraitShown || !character?.emotionalPortraitUrl) return;
+    if (cinemaPhase !== "conversacion" || !sessionStartTime) return;
+    const elapsed = Date.now() - sessionStartTime;
+    if (elapsed < 4 * 60_000 || elapsed > 8 * 60_000) return;
+    if (deepExchangeCount < 3) return;
+    setShowEmotionalPortrait(true);
+    setEmotionalPortraitShown(true);
+    ambient.duckForPortrait(5000);
+    setTimeout(() => setShowEmotionalPortrait(false), 5000);
+  }, [messages, deepExchangeCount, timeLeft, cinemaPhase]);
+
+  // ── Drain trophy queue ────────────────────────────────────────────────────
   useEffect(() => {
     if (activeTrophy || pendingTrophies.length === 0) return;
     const [next, ...rest] = pendingTrophies;
@@ -218,23 +310,35 @@ const Conversation = () => {
     setPendingTrophies(rest);
   }, [activeTrophy, pendingTrophies]);
 
-  // Keep messages ref in sync for summarization
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // ── Scroll to bottom ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (cinemaPhase !== "conversacion" || viewingPhase !== "conversacion") return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, isTyping]);
 
-  // Stop audio + pause conversation when leaving the page
+  // ── CIERRE: timer for tag UI and skip button ──────────────────────────────
+  useEffect(() => {
+    if (cinemaPhase !== "cierre") return;
+    const t1 = setTimeout(() => setShowCierreTagUI(true), 3000);
+    const t2 = setTimeout(() => setShowCierreSkip(true), 8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [cinemaPhase]);
+
+  // ── Unmount cleanup ───────────────────────────────────────────────────────
   useEffect(() => () => {
     stopSpeaking();
-    if (!endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
+    ambient.setDuckedForSpeaking(false);
+    if (!skipSaveRef.current && !endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
       pauseConversation(conversationIdRef.current, timeLeftRef.current).catch(() => {});
     }
   }, []);
 
-  // When session ends: save + summarize + moderate + trophies + level + ranking
+  // ── Session end: summarize, moderate, trophies ────────────────────────────
   useEffect(() => {
     if (!ended || !conversationId || !character || !user) return;
     endConversation(conversationId).catch(() => {});
     updateStreak(user.uid).catch(() => {});
-    const msgs = messagesRef.current.slice(1); // skip character intro
+    const msgs = messagesRef.current.slice(1);
     if (msgs.filter((m) => m.role === "user").length >= 2) {
       const creatorEmail = (character as any).creatorEmail as string | undefined;
       Promise.all([
@@ -243,62 +347,210 @@ const Conversation = () => {
       ]).then(async ([s, m]) => {
         await saveConversationSummary(conversationId, s);
         await saveConversationModeration(conversationId, m);
-
         if (m.decision === "deliver" && creatorEmail) {
-          sendDeliveryEmail({
-            toEmail: creatorEmail,
-            characterName: character.name,
-            summary: s.summary,
-            highlight: s.highlight,
-            recommendations: s.recommendations,
-          }).catch(() => {});
+          sendDeliveryEmail({ toEmail: creatorEmail, characterName: character.name, summary: s.summary, highlight: s.highlight, recommendations: s.recommendations }).catch(() => {});
         }
-
-        // Trophies + level + ranking
         try {
-          const [existingTrophies, allConvs] = await Promise.all([
-            getUserTrophies(user.uid),
-            getHelperConversations(user.uid),
-          ]);
+          const [existingTrophies, allConvs] = await Promise.all([getUserTrophies(user.uid), getHelperConversations(user.uid)]);
           const existingIds = new Set(existingTrophies.map((t) => t.id));
-          // Build the completed conv list including this one with moderation
-          const completedConv = { ...messagesRef.current, helperId: user.uid, characterId: character.id, endedAt: { toMillis: () => Date.now() } as any, startedAt: null, messages: messagesRef.current, id: conversationId, moderation: m, seenByCreator: false };
-
-          const newIds = evaluateTrophies({
-            allConvs: [...allConvs, completedConv],
-            newConv: completedConv,
-            newScore: m.score,
-            characterLocation: character.location,
-            fullSession,
-            existingTrophyIds: existingIds,
-          });
-
-          if (newIds.length > 0) {
-            await awardTrophies(user.uid, newIds);
-            setPendingTrophies(newIds);
-          }
-
-          // Recalculate level
+          const completedConv = { helperId: user.uid, characterId: character.id, endedAt: { toMillis: () => Date.now() } as any, startedAt: null, messages: messagesRef.current, id: conversationId, moderation: m, seenByCreator: false };
+          const newIds = evaluateTrophies({ allConvs: [...allConvs, completedConv], newConv: completedConv, newScore: m.score, characterLocation: character.location, fullSession, existingTrophyIds: existingIds });
+          if (newIds.length > 0) { await awardTrophies(user.uid, newIds); setPendingTrophies(newIds); }
           const allCompleted = [...allConvs, completedConv];
           const quality = allCompleted.filter((c) => (c.moderation?.score ?? 0) >= 7).length;
           const updatedTrophies = [...existingTrophies, ...newIds.map((id) => ({ id } as any))];
           const hasImpact = updatedTrophies.some((t) => IMPACT_TROPHY_IDS.includes(t.id));
-          const newLevel = calculateLevel(quality, hasImpact, false);
-          await setUserLevel(user.uid, newLevel);
-
-          // Rebuild weekly ranking
+          await setUserLevel(user.uid, calculateLevel(quality, hasImpact, false));
           rebuildWeeklyRanking().catch(() => {});
-
           refetchProfile();
-        } catch { /* non-critical */ }
+        } catch {}
       }).catch(() => {});
     }
   }, [ended, conversationId, character, user]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, isTyping]);
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const triggerCierre = () => {
+    setCinemaPhase("cierre");
+    setViewingPhase("cierre");
+    if (character) {
+      generateClosingLine(character, messagesRef.current, lang)
+        .then((line) => {
+          if (!line) return;
+          setClosingLine(line);
+          setMessages((m) => [...m, { role: "char" as const, text: line, t: now() }]);
+          ambient.setDuckedForSpeaking(true);
+          speakText(line, {
+            characterName: character.name,
+            gender: character.gender,
+            emotionalStatus: character.emotionalStatus,
+            onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
+          });
+        })
+        .catch(() => {});
+    }
+  };
 
+  const endSession = () => {
+    setEnded(true);
+    triggerCierre();
+  };
+
+  const handleEnterConversacion = () => {
+    if (entradaExiting) return;
+    setEntradaExiting(true);
+    setTimeout(() => {
+      const text = openingText || character?.intro || "";
+      setMessages([{ role: "char", text, t: now() }]);
+      setSpeaking(true);
+      ambient.setDuckedForSpeaking(true);
+      speakText(text, {
+        characterName: character?.name,
+        gender: character?.gender,
+        emotionalStatus: character?.emotionalStatus,
+        onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
+      });
+      setCinemaPhase("conversacion");
+      setViewingPhase("conversacion");
+      setSessionStartTime(Date.now());
+      setEntradaExiting(false);
+    }, 1500);
+  };
+
+  const handleResumeYes = () => {
+    if (!pausedDraft) return;
+    setConversationId(pausedDraft.id);
+    setMessages(pausedDraft.messages);
+    setTimeLeft(pausedDraft.timeLeft);
+    setIsResumed(true);
+    setSessionStartTime(Date.now());
+    setCinemaPhase("conversacion");
+    setViewingPhase("conversacion");
+    setPhase("conversation");
+    setShowResumeModal(false);
+    setPausedDraft(null);
+  };
+
+  const handleResumeNo = () => {
+    if (pausedDraft) {
+      discardPausedConversation(pausedDraft.id).catch(() => {});
+    }
+    setShowResumeModal(false);
+    setPausedDraft(null);
+  };
+
+  const handleSaveForLater = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    if (conversationId) {
+      await pauseConversation(conversationId, timeLeft).catch(() => {});
+    }
+    skipSaveRef.current = true;
+    setIsSaving(false);
+    setShowSaveConfirm(true);
+    setTimeout(() => {
+      navigate("/gallery");
+    }, 2800);
+  };
+
+  const handleExitConfirm = () => {
+    skipSaveRef.current = true;
+    navigate("/gallery");
+  };
+
+  const handleNavClick = (target: CinemaPhase) => {
+    if (target === "cierre" && cinemaPhase !== "cierre") return;
+    if (target === cinemaPhase) { setViewingPhase(cinemaPhase); return; }
+    if (target === "entrada" && (cinemaPhase === "conversacion" || cinemaPhase === "cierre")) {
+      setViewingPhase("entrada");
+    } else if (target === "conversacion" && cinemaPhase === "cierre") {
+      setViewingPhase("conversacion");
+    } else if (viewingPhase !== cinemaPhase) {
+      setViewingPhase(cinemaPhase);
+    }
+  };
+
+  const toggleListening = () => {
+    if (listening) {
+      recognizerRef.current?.stop();
+      recognizerRef.current = null;
+      setListening(false);
+      return;
+    }
+    if (!isSpeechSupported()) return;
+    stopSpeaking();
+    setSpeaking(false);
+    const rec = startRecognition(
+      (interim) => setInput(interim),
+      (final) => { setListening(false); setInput(final); recognizerRef.current = null; },
+      () => { setListening(false); recognizerRef.current = null; },
+      { lang },
+    );
+    recognizerRef.current = rec;
+    if (rec) setListening(true);
+  };
+
+  const send = async (textOverride?: string) => {
+    const msgText = (textOverride ?? input).trim();
+    if (!msgText || ended || timeLeft === 0 || isTyping || !character) return;
+    const userMsg: Msg = { role: "user", text: msgText, t: now() };
+    setMessages((m) => [...m, userMsg]);
+    if (!textOverride) setInput("");
+    setIsTyping(true);
+
+    const wordCount = msgText.split(/\s+/).filter(Boolean).length;
+    const organicDelay = Math.max(3000, Math.min(8000, 1500 + wordCount * 320));
+
+    const history = [...messages, userMsg]
+      .slice(1)
+      .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("assistant" as const), content: m.text }));
+
+    try {
+      const [reply] = await Promise.all([
+        getCharacterReply(character, history, lang),
+        new Promise<void>((r) => setTimeout(r, organicDelay)),
+      ]);
+      const charT = now();
+      const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: reply, t: charT }];
+      setMessages(updatedMsgs);
+      if (conversationId) {
+        await saveMessages(conversationId, [
+          { role: "user", text: userMsg.text, t: userMsg.t },
+          { role: "char", text: reply, t: charT },
+        ]);
+      }
+      const replyWords = reply.split(/\s+/).filter(Boolean).length;
+      if (wordCount > 15 && replyWords > 15) {
+        setDeepExchangeCount((n) => n + 1);
+      }
+      setSpeaking(true);
+      ambient.setDuckedForSpeaking(true);
+      speakText(reply, {
+        characterName: character.name,
+        gender: character.gender,
+        emotionalStatus: character.emotionalStatus,
+        onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
+      });
+      if (crisisLevel !== "high") {
+        detectCrisis(updatedMsgs.slice(-8).map((m) => ({ role: m.role, text: m.text })))
+          .then(({ crisis, level }) => { if (crisis) setCrisisLevel((prev) => (prev === "high" ? "high" : level)); })
+          .catch(() => {});
+      }
+    } catch {
+      setMessages((m) => [...m, { role: "char", text: "...", t: now() }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleCierreDone = async (tags: string[]) => {
+    setCierreSaving(true);
+    if (conversationId && tags.length > 0) {
+      await saveEmotionTags(conversationId, tags, character?.id ?? "").catch(() => {});
+    }
+    navigate(user ? "/profile" : "/gallery");
+  };
+
+  // ── Early returns ──────────────────────────────────────────────────────────
   if (!character) {
     return (
       <div className="min-h-screen grid place-items-center">
@@ -308,7 +560,6 @@ const Conversation = () => {
   }
 
   if (phase === "narrator") {
-    // Wait until the narrator story is ready before mounting NarratorPhase
     if (!character.narratorStory) {
       return (
         <div className="min-h-screen relative overflow-hidden flex items-center justify-center">
@@ -329,427 +580,600 @@ const Conversation = () => {
     return (
       <NarratorPhase
         character={character}
-        narratorText={(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.narratorStory) || (character.narratorStory ?? "")}
-        onEnter={() => setPhase("chat")}
+        narratorText={(() => {
+          const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
+          return (lang !== "en" && character.translations?.[tl]?.narratorStory) || (character.narratorStory ?? "");
+        })()}
+        onEnter={() => setPhase("conversation")}
       />
     );
   }
 
-  const toggleListening = () => {
-    if (listening) {
-      recognizerRef.current?.stop();
-      recognizerRef.current = null;
-      setListening(false);
-      return;
-    }
-    if (!isSpeechSupported()) return;
-    stopSpeaking();
-    setSpeaking(false);
-    const rec = startRecognition(
-      (interim) => setInput(interim),
-      (final) => {
-        setListening(false);
-        setInput(final);
-        recognizerRef.current = null;
-      },
-      () => { setListening(false); recognizerRef.current = null; },
-      { lang },
-    );
-    recognizerRef.current = rec;
-    if (rec) setListening(true);
+  // ── Build translated tag categories ───────────────────────────────────────
+  const cierreTagCats = getCierreTagCats(t);
+  const youLabel = t("conversation.youLabel") || "YOU";
+  const phaseLabels: Record<CinemaPhase, string> = {
+    entrada: t("conversation.phaseEntrada"),
+    conversacion: t("conversation.phaseConversacion"),
+    cierre: t("conversation.phaseCierre"),
   };
-
-  const send = async (textOverride?: string) => {
-    const msgText = (textOverride ?? input).trim();
-    if (!msgText || ended || timeLeft === 0 || isTyping) return;
-    const userMsg: Msg = { role: "user", text: msgText, t: now() };
-    setMessages((m) => [...m, userMsg]);
-    if (!textOverride) setInput("");
-    setIsTyping(true);
-
-    // Build the conversation history in the format Claude expects.
-    // Skip the first character message (the intro) since the system prompt already covers it.
-    // Claude requires messages to alternate user/assistant, starting with user.
-    const history = [...messages, userMsg]
-      .slice(1) // skip the character's opening intro
-      .map((m) => ({
-        role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-        content: m.text,
-      }));
-
-    try {
-      const reply = await getCharacterReply(character, history, lang);
-      const charT = now();
-      const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: reply, t: charT }];
-      setMessages(updatedMsgs);
-      const replyIdx = updatedMsgs.length - 1;
-      if (conversationId) {
-        await saveMessages(conversationId, [
-          { role: "user", text: userMsg.text, t: userMsg.t },
-          { role: "char", text: reply, t: charT },
-        ]);
-      }
-      // Always speak character reply
-      setSpeaking(true);
-      setSpeakingMsgIdx(replyIdx);
-      speakText(reply, {
-        characterName: character.name,
-        gender: character.gender,
-        emotionalStatus: character.emotionalStatus,
-        onEnd: () => { setSpeaking(false); setSpeakingMsgIdx(null); },
-      });
-      // Run crisis detection if not already flagged at high level
-      if (crisisLevel !== "high") {
-        detectCrisis(updatedMsgs.slice(-8).map((m) => ({ role: m.role, text: m.text })))
-          .then(({ crisis, level }) => {
-            if (crisis) setCrisisLevel((prev) => (prev === "high" ? "high" : level));
-          })
-          .catch(() => {});
-      }
-    } catch {
-      setMessages((m) => [...m, { role: "char", text: "Sorry, I couldn't respond right now. Please try again.", t: now() }]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  const endSession = () => { setEnded(true); setShowTagScreen(true); };
+  const isReadMode = viewingPhase !== cinemaPhase;
 
   return (
-    <motion.div
-      className="min-h-screen relative overflow-hidden"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1.5, ease: "easeIn" }}
-    >
-      <TopNav />
-
-      {/* Ambient portrait backdrop */}
+    <div className="min-h-screen relative overflow-hidden bg-background">
+      {/* Ambient backdrop */}
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <img
-          src={character.portrait}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover opacity-20 blur-2xl scale-110"
-        />
-        <div className="absolute inset-0 bg-background/85" />
-        {/* Atmospheric color tint per emotionalStatus */}
+        <img src={character.portrait} alt="" className="absolute inset-0 h-full w-full object-cover opacity-15 blur-2xl scale-110" />
+        <div className="absolute inset-0 bg-background/88" />
         <motion.div
           className="absolute inset-0"
-          animate={{ opacity: 1 }}
           initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 4 }}
           style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }}
         />
       </div>
 
-      <div className="container pt-24 pb-12 grid lg:grid-cols-[420px_1fr] gap-8">
-        {/* Portrait & info */}
-        <aside className="lg:sticky lg:top-24 self-start space-y-5">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
-          >
-            <ArrowLeft className="h-4 w-4" /> {t("conversation.backToGallery")}
-          </button>
-
+      {/* Resume draft modal */}
+      <AnimatePresence>
+        {showResumeModal && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-            className="relative aspect-[4/5] rounded-3xl overflow-hidden shadow-portrait"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm px-6"
           >
-            <motion.img
-              animate={{ scale: ended ? 1 : [1, 1.03, 1] }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              src={character.portrait}
-              alt={character.name}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-portrait" />
-            <div className="absolute top-3 left-3 flex gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-background/50 backdrop-blur px-2.5 py-1 text-[10px] uppercase tracking-wider">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inset-0 rounded-full bg-primary animate-ping" />
-                  <span className="relative h-1.5 w-1.5 rounded-full bg-primary" />
-                </span>
-                {character.emotionalStatus}
-              </span>
-            </div>
-            <div className="absolute bottom-0 inset-x-0 p-5">
-              <h2 className="font-display text-3xl">{character.name}</h2>
-              <p className="text-sm text-muted-foreground">{character.age} · {character.location}</p>
-            </div>
-          </motion.div>
-
-          <div className="glass rounded-2xl p-4 space-y-3 text-sm">
-            <p className="text-muted-foreground leading-relaxed">{(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.longStory) || character.longStory}</p>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {character.tags.map((tg) => (
-                <span key={tg} className="rounded-full bg-secondary/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {t(`tags.${tg}`)}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <TrustBadge>{t("conversation.trust")}</TrustBadge>
-        </aside>
-
-        {/* Chat */}
-        <section className="flex flex-col h-[calc(100vh-8rem)] glass-strong rounded-3xl overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <span className="text-sm">{t("conversation.safeSession")} {character.name}</span>
-              {speaking && (
-                <motion.span
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  className="inline-flex items-center gap-1 text-[10px] text-primary uppercase tracking-wider"
-                >
-                  <Volume2 className="h-3 w-3" /> {t("conversation.speaking")}
-                </motion.span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 text-xs tabular-nums transition ${
-                timeLeft <= 120 && !ended ? "text-destructive font-medium" : "text-muted-foreground"
-              }`}>
-                <Clock className="h-3 w-3" /> {fmt(timeLeft)}
-              </span>
-              {isSpeechSupported() && !ended && (
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-sm rounded-3xl bg-surface border border-border/40 p-8 space-y-5 text-center"
+            >
+              <p className="font-display text-lg text-foreground/90">{t("conversation.resumeTitle")}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t("conversation.resumeBody")}</p>
+              <div className="flex gap-3 pt-1">
                 <button
-                  onClick={() => {
-                    const next = !voiceEnabled;
-                    setVoiceEnabled(next);
-                    if (!next) stopSpeaking();
-                  }}
-                  title={voiceEnabled ? "Turn off voice" : "Turn on voice"}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
-                    voiceEnabled
-                      ? "border-primary/50 bg-primary/10 text-primary"
-                      : "border-border/60 text-muted-foreground hover:border-primary/30"
-                  }`}
+                  onClick={handleResumeNo}
+                  className="flex-1 rounded-full border border-border/50 py-2.5 text-sm text-muted-foreground hover:border-border hover:text-foreground transition"
                 >
-                  {voiceEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
-                  {voiceEnabled ? t("conversation.voiceOn") : t("conversation.voiceOff")}
+                  {t("conversation.resumeNo")}
                 </button>
-              )}
-              {!ended && (
                 <button
-                  onClick={endSession}
-                  className="rounded-full border border-border/60 px-3 py-1 text-xs hover:border-destructive/60 hover:text-destructive transition"
+                  onClick={handleResumeYes}
+                  className="flex-1 rounded-full bg-gradient-amber text-primary-foreground py-2.5 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
                 >
-                  {t("conversation.endSession")}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Transcript */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 md:px-8 py-6 space-y-4">
-            <AnimatePresence initial={false}>
-              {messages.map((m, i) => {
-                const charged = m.role === "char" && isEmotionallyCharged(m.text);
-                return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div className={`max-w-[80%] ${m.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 px-1 flex items-center gap-1.5">
-                        {m.role === "user" ? "You" : character.name} · {m.t}
-                        {speakingMsgIdx === i && (
-                          <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity }}>
-                            <Volume2 className="h-2.5 w-2.5 text-primary" />
-                          </motion.span>
-                        )}
-                      </span>
-                      <div
-                        className={`rounded-2xl px-4 py-3 leading-relaxed transition-all ${
-                          m.role === "user"
-                            ? "bg-primary/15 text-foreground border border-primary/20 rounded-br-sm"
-                            : `bg-surface-elevated/80 border border-border/60 rounded-bl-sm ${
-                                charged ? "tracking-[0.025em] text-foreground border-border/80" : "text-foreground/90"
-                              }`
-                        } ${speakingMsgIdx === i ? "ring-1 ring-primary/30" : ""}`}
-                      >
-                        {m.text}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-
-            {isTyping && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-sm bg-surface-elevated/80 border border-border/60 px-4 py-3 inline-flex gap-1.5">
-                  {[0, 1, 2].map((d) => (
-                    <motion.span
-                      key={d}
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.2, repeat: Infinity, delay: d * 0.15 }}
-                      className="h-1.5 w-1.5 rounded-full bg-foreground/70"
-                    />
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {crisisLevel && <CrisisAlert level={crisisLevel} />}
-            {ended && <EndState character={character.name} />}
-          </div>
-
-          {/* Input */}
-          {!ended && timeLeft > 0 && (
-            <div className="border-t border-border/40 p-4 bg-surface/40">
-              <div className="flex items-center gap-2">
-                <motion.button
-                  onClick={toggleListening}
-                  disabled={!isSpeechSupported() || isTyping}
-                  animate={listening ? { scale: [1, 1.1, 1] } : {}}
-                  transition={{ duration: 0.8, repeat: Infinity }}
-                  className={`grid h-11 w-11 place-items-center rounded-full border transition ${
-                    listening
-                      ? "bg-red-500/20 border-red-500/60 text-red-400"
-                      : "bg-secondary border-border/60 hover:border-primary/40"
-                  } disabled:opacity-40 disabled:cursor-not-allowed`}
-                  aria-label={listening ? "Stop listening" : "Speak"}
-                >
-                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </motion.button>
-                <div className="flex-1 relative">
-                  <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && send(undefined)}
-                    disabled={listening}
-                    placeholder={listening ? t("conversation.listening") : `${t("conversation.replyTo")} ${character.name}…`}
-                    className={`w-full rounded-full bg-surface border px-5 py-3 text-sm focus:outline-none focus:border-primary/50 transition ${
-                      listening ? "border-red-500/40 text-muted-foreground italic" : "border-border"
-                    }`}
-                  />
-                </div>
-                <button
-                  onClick={() => send(undefined)}
-                  className="grid h-11 w-11 place-items-center rounded-full bg-gradient-amber text-primary-foreground shadow-glow hover:scale-105 transition"
-                  aria-label="Send"
-                >
-                  <Send className="h-4 w-4" />
+                  {t("conversation.resumeYes")}
                 </button>
               </div>
-              <p className="mt-2 text-[10px] text-muted-foreground/80 px-2 flex items-center gap-2">
-                <span className="inline-block h-1 w-1 rounded-full bg-primary animate-pulse" /> {t("conversation.reviewedNote")}
-              </p>
-            </div>
-          )}
-
-          {/* Time's up */}
-          {(ended || timeLeft === 0) && (
-            <div className="border-t border-border/40 p-5 text-center space-y-1">
-              <p className="text-sm font-medium">{t("conversation.sessionEnded")}</p>
-              <p className="text-xs text-muted-foreground">{t("conversation.sessionEndedSub")}</p>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <TrophyNotification
-        trophyId={activeTrophy}
-        onDismiss={() => setActiveTrophy(null)}
-      />
-
-      <AnimatePresence>
-        {showTagScreen && (
-          <EmotionTagScreen
-            conversationId={conversationId}
-            characterId={character.id}
-            onDone={() => setShowTagScreen(false)}
-          />
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Ambient music mute button */}
-      <button
-        onClick={() => setMusicMuted((m) => !m)}
-        title={musicMuted ? "Activar música" : "Silenciar música"}
-        className="fixed bottom-6 right-6 z-40 h-9 w-9 grid place-items-center rounded-full bg-background/60 backdrop-blur border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30 transition"
-      >
-        <Music className={`h-3.5 w-3.5 transition ${musicMuted ? "opacity-25" : "opacity-80"}`} />
-      </button>
-    </motion.div>
-  );
-};
-
-const EndState = ({ character }: { character: string }) => {
-  const { t } = useLanguage();
-  return (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.8 }}
-    className="mt-10 mx-auto max-w-md text-center space-y-4 py-10"
-  >
-    <div className="mx-auto h-12 w-12 rounded-full bg-gradient-amber grid place-items-center shadow-glow">
-      <ShieldCheck className="h-5 w-5 text-primary-foreground" />
-    </div>
-    <h3 className="font-display text-3xl">{t("conversation.thankYou")}</h3>
-    <p className="text-sm text-muted-foreground leading-relaxed">
-      {t("conversation.thankYouBody").replace("{name}", character)}
-    </p>
-    <Link
-      to="/gallery"
-      className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-3 text-sm hover:border-primary/40 transition"
-    >
-      {t("conversation.returnGallery")}
-    </Link>
-  </motion.div>
-  );
-};
-
-const CrisisAlert = ({ level }: { level: "low" | "high" }) => {
-  const { t } = useLanguage();
-  return (
-  <motion.div
-    initial={{ opacity: 0, y: 12 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-    className={`rounded-2xl border p-4 space-y-2 ${
-      level === "high"
-        ? "bg-amber-500/10 border-amber-500/30"
-        : "bg-primary/8 border-primary/20"
-    }`}
-  >
-    <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 text-base">{level === "high" ? "🟠" : "🔵"}</span>
-      <div className="space-y-1.5">
-        <p className="text-sm font-medium">
-          {level === "high" ? t("conversation.crisis.high") : t("conversation.crisis.low")}
-        </p>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {level === "high" ? t("conversation.crisis.highSub") : t("conversation.crisis.lowSub")}
-        </p>
-        {level === "high" && (
-          <div className="pt-1 space-y-1 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground/80">{t("conversation.crisis.resources")}</p>
-            <p>🇪🇸 Spain — Teléfono de la Esperanza: 717 003 717</p>
-            <p>🇺🇸 US — Crisis Text Line: text HOME to 741741</p>
-            <p>🇬🇧 UK — Samaritans: 116 123</p>
-            <p>🌍 International — <a href="https://www.iasp.info/resources/Crisis_Centres/" target="_blank" rel="noreferrer" className="underline hover:text-foreground transition">find your local line</a></p>
-          </div>
+      {/* Exit confirmation modal */}
+      <AnimatePresence>
+        {showExitModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm px-6"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-sm rounded-3xl bg-surface border border-border/40 p-8 space-y-5 text-center"
+            >
+              <p className="font-display text-lg text-foreground/90">{t("conversation.confirmExitTitle")}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{t("conversation.confirmExitBody")}</p>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="flex-1 rounded-full bg-gradient-amber text-primary-foreground py-2.5 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
+                >
+                  {t("conversation.confirmExitCancel")}
+                </button>
+                <button
+                  onClick={handleExitConfirm}
+                  className="flex-1 rounded-full border border-border/50 py-2.5 text-sm text-muted-foreground hover:border-border hover:text-foreground transition"
+                >
+                  {t("conversation.confirmExitLeave")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Save confirmation toast */}
+      <AnimatePresence>
+        {showSaveConfirm && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] max-w-xs w-full px-5 py-3.5 rounded-2xl bg-surface border border-border/40 text-center"
+          >
+            <p className="text-xs text-foreground/70 leading-relaxed">{t("conversation.saveConfirm")}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Phase navigation bar */}
+      <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-center gap-5 py-4">
+        {(["entrada", "conversacion", "cierre"] as CinemaPhase[]).map((p, i) => {
+          const isActive = viewingPhase === p;
+          const isReached = p === "entrada" || (p === "conversacion" && (cinemaPhase === "conversacion" || cinemaPhase === "cierre")) || p === cinemaPhase;
+          const isClickable = !isActive && isReached && !(p === "cierre" && cinemaPhase !== "cierre");
+          return (
+            <div key={p} className="flex items-center gap-5">
+              {i > 0 && <span className="text-[8px] text-muted-foreground/20">·</span>}
+              <button
+                onClick={() => isClickable && handleNavClick(p)}
+                className={`text-[9px] uppercase tracking-[0.28em] transition-all ${
+                  isActive ? "text-foreground/80" : isReached && isClickable ? "text-muted-foreground/35 hover:text-muted-foreground/60 cursor-pointer" : "text-muted-foreground/18 cursor-default"
+                }`}
+              >
+                {phaseLabels[p]}
+              </button>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Main content */}
+      <AnimatePresence mode="wait">
+        {/* ═══ ENTRADA ════════════════════════════════════════════════════════ */}
+        {viewingPhase === "entrada" && (
+          <motion.div
+            key="entrada"
+            className="min-h-screen flex flex-col items-center justify-center px-6 pt-16"
+            animate={{ opacity: entradaExiting ? 0 : 1, scale: entradaExiting ? 0.97 : 1 }}
+            transition={{ duration: 1.5, ease: [0.65, 0, 0.35, 1] }}
+          >
+            {/* Portrait */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
+              className="relative w-52 md:w-64 aspect-[3/4] rounded-3xl overflow-hidden shadow-portrait mb-10"
+            >
+              <img src={character.portrait} alt={character.name} className="absolute inset-0 h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-portrait" />
+            </motion.div>
+
+            {/* Opening line */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1, delay: 0.8 }}
+              className="max-w-sm text-center min-h-[4rem] flex items-center justify-center"
+            >
+              {!openingText ? (
+                <motion.span
+                  animate={{ opacity: [0.3, 0.8, 0.3] }}
+                  transition={{ duration: 1.4, repeat: Infinity }}
+                  className="inline-block h-5 w-px bg-foreground/40"
+                />
+              ) : (
+                <p className="font-display italic text-lg md:text-xl text-foreground/85 leading-relaxed">
+                  {isReadMode ? openingText : openingText.slice(0, typedChars)}
+                  {!typingDone && !isReadMode && (
+                    <motion.span
+                      animate={{ opacity: [1, 0, 1] }}
+                      transition={{ duration: 0.75, repeat: Infinity }}
+                      className="inline-block w-0.5 h-[1.1em] bg-foreground/60 ml-0.5 align-middle"
+                    />
+                  )}
+                </p>
+              )}
+            </motion.div>
+
+            {/* CTA */}
+            <div className="mt-12 h-10 flex items-center justify-center">
+              {isReadMode ? (
+                <button
+                  onClick={() => setViewingPhase(cinemaPhase)}
+                  className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/40 hover:text-muted-foreground/70 border border-border/25 rounded-full px-5 py-2 hover:border-border/50 transition"
+                >
+                  {t("conversation.continueReading")}
+                </button>
+              ) : (
+                <AnimatePresence>
+                  {showEnterBtn && (
+                    <motion.button
+                      key="entrar"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.7 }}
+                      onClick={handleEnterConversacion}
+                      className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground/50 hover:text-muted-foreground/80 border border-border/25 rounded-full px-7 py-2.5 hover:border-border/50 transition"
+                    >
+                      {t("conversation.enterCTA")}
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              )}
+            </div>
+
+            {/* Discrete back link in entrada */}
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 3, duration: 1 }}
+              onClick={() => setShowExitModal(true)}
+              className="mt-8 text-[9px] uppercase tracking-[0.2em] text-muted-foreground/20 hover:text-muted-foreground/45 transition"
+            >
+              {t("conversation.backToGalleryBtn")}
+            </motion.button>
+          </motion.div>
+        )}
+
+        {/* ═══ CONVERSACIÓN ═══════════════════════════════════════════════════ */}
+        {viewingPhase === "conversacion" && (
+          <motion.div
+            key="conversacion"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="min-h-screen flex pt-14"
+          >
+            {/* Left sidebar */}
+            <aside className="w-48 shrink-0 sticky top-14 self-start h-[calc(100vh-3.5rem)] flex flex-col items-center px-4 py-8 border-r border-border/15 overflow-hidden">
+              <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden mb-4 shadow-portrait">
+                <img src={character.portrait} alt={character.name} className="absolute inset-0 h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-portrait" />
+              </div>
+              <h3 className="font-display text-base text-center">{character.name}</h3>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5 text-center">{character.age} · {character.location}</p>
+              <span className="mt-2.5 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[9px] uppercase tracking-wider text-primary/80">
+                {character.emotionalStatus}
+              </span>
+              <div className="w-full h-px bg-border/20 my-4" />
+              {character.topEmotionTags && character.topEmotionTags.length > 0 && (
+                <div className="flex flex-col items-center gap-1.5">
+                  {character.topEmotionTags.slice(0, 3).map((tag) => (
+                    <span key={tag} className="text-[9px] text-muted-foreground/35 text-center">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </aside>
+
+            {/* Right column */}
+            <div className="flex-1 flex flex-col min-h-[calc(100vh-3.5rem)] relative overflow-hidden">
+              {/* Emotional portrait overlay */}
+              <AnimatePresence>
+                {showEmotionalPortrait && character.emotionalPortraitUrl && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 2 }}
+                    className="absolute inset-0 z-20 top-[57px]"
+                  >
+                    <img src={character.emotionalPortraitUrl} alt="" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-background/20" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-8 py-3.5 border-b border-border/15 shrink-0">
+                <span className={`inline-flex items-center gap-1.5 text-[10px] tabular-nums transition-colors ${
+                  timeLeft <= 60 && !ended ? "text-amber-400/80" : "text-muted-foreground/40"
+                }`}>
+                  <Clock className="h-2.5 w-2.5" />
+                  {fmt(timeLeft)}
+                  {timeLeft <= 60 && !ended && (
+                    <motion.span animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity }}>
+                      <Flame className="h-2.5 w-2.5" />
+                    </motion.span>
+                  )}
+                </span>
+
+                <div className="flex items-center gap-4">
+                  {speaking && (
+                    <motion.span
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.4, repeat: Infinity }}
+                      className="text-[9px] uppercase tracking-wider text-primary/60"
+                    >
+                      {character.name}…
+                    </motion.span>
+                  )}
+
+                  {/* Discrete nav buttons */}
+                  {!ended && !isReadMode && (
+                    <>
+                      <button
+                        onClick={handleSaveForLater}
+                        disabled={isSaving}
+                        className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/22 hover:text-muted-foreground/50 transition disabled:opacity-30"
+                      >
+                        {t("conversation.saveForLater")}
+                      </button>
+                      <button
+                        onClick={() => setShowExitModal(true)}
+                        className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/22 hover:text-muted-foreground/50 transition"
+                      >
+                        {t("conversation.backToGalleryBtn")}
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => setMusicMuted((m) => !m)}
+                    className="text-muted-foreground/30 hover:text-muted-foreground/60 transition"
+                    title={musicMuted ? t("conversation.musicOn") : t("conversation.musicOff")}
+                  >
+                    <Music className={`h-3 w-3 ${musicMuted ? "opacity-30" : ""}`} />
+                  </button>
+
+                  {!ended && !isReadMode && (
+                    <button
+                      onClick={endSession}
+                      className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/25 hover:text-muted-foreground/50 transition"
+                    >
+                      {t("conversation.end")}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Transcript */}
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-8 md:px-12 py-10">
+                {messages.map((m, i) => {
+                  const isChar = m.role === "char";
+                  const charged = isChar && isEmotionallyCharged(m.text);
+                  return (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      {i > 0 && <div className="border-t border-border/12 my-7" />}
+                      <div className="space-y-2">
+                        <p className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground/35">
+                          {isChar ? character.name : youLabel}
+                        </p>
+                        <p className={`leading-relaxed ${
+                          isChar
+                            ? `font-display italic text-base text-foreground/85 ${charged ? "text-foreground tracking-[0.025em]" : ""}`
+                            : "text-sm text-foreground/65"
+                        }`}>
+                          {m.text}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                {/* Typing indicator */}
+                {isTyping && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <div className="border-t border-border/12 my-7" />
+                    <p className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground/35 mb-3">{character.name}</p>
+                    <div className="flex gap-2 items-center">
+                      {DOT_ANIM.map((d, i) => (
+                        <motion.span
+                          key={i}
+                          animate={{ opacity: d.opacity }}
+                          transition={{ duration: d.duration, repeat: Infinity, delay: d.delay, ease: "easeInOut" }}
+                          className="h-1.5 w-1.5 rounded-full bg-foreground/35"
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {crisisLevel && <CrisisAlert level={crisisLevel} />}
+                <div className="pb-8" />
+              </div>
+
+              {/* Input area */}
+              {!ended && !isReadMode && (
+                <div className="px-8 md:px-12 py-5 border-t border-border/10 shrink-0">
+                  <div className="flex items-end gap-3">
+                    {isSpeechSupported() && (
+                      <motion.button
+                        onClick={toggleListening}
+                        animate={listening ? { scale: [1, 1.1, 1] } : {}}
+                        transition={{ duration: 0.8, repeat: Infinity }}
+                        className={`mb-1 grid h-7 w-7 place-items-center rounded-full border transition shrink-0 ${
+                          listening ? "bg-red-500/15 border-red-500/40 text-red-400" : "border-border/30 text-muted-foreground/40 hover:border-border/60 hover:text-muted-foreground"
+                        }`}
+                      >
+                        {listening ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+                      </motion.button>
+                    )}
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                      rows={1}
+                      disabled={listening || isTyping}
+                      placeholder={listening ? t("conversation.listening") : `${t("conversation.replyTo")} ${character.name}…`}
+                      className="flex-1 bg-transparent border-0 border-b border-border/20 pb-2 text-sm placeholder:text-muted-foreground/25 focus:outline-none focus:border-border/45 resize-none transition disabled:opacity-50"
+                      style={{ minHeight: "2rem", maxHeight: "6rem" }}
+                      onInput={(e) => {
+                        const el = e.currentTarget;
+                        el.style.height = "auto";
+                        el.style.height = Math.min(el.scrollHeight, 96) + "px";
+                      }}
+                    />
+                    <button
+                      onClick={() => send()}
+                      disabled={!input.trim() || isTyping}
+                      className="mb-1 grid h-7 w-7 place-items-center rounded-full bg-gradient-amber text-primary-foreground hover:scale-105 transition disabled:opacity-30 disabled:hover:scale-100 shrink-0"
+                    >
+                      <Send className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[9px] text-muted-foreground/25 flex items-center gap-1.5">
+                    <span className="h-1 w-1 rounded-full bg-primary/50 inline-block" />
+                    {t("conversation.reviewedNote")}
+                  </p>
+                </div>
+              )}
+
+              {/* Read-mode return */}
+              {isReadMode && (
+                <div className="px-8 py-5 border-t border-border/10 shrink-0 text-center">
+                  <button
+                    onClick={() => setViewingPhase(cinemaPhase)}
+                    className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/30 hover:text-muted-foreground/60 border border-border/20 rounded-full px-5 py-2 hover:border-border/45 transition"
+                  >
+                    {t("conversation.continueReading")}
+                  </button>
+                </div>
+              )}
+
+              {/* Session ended bar */}
+              {ended && !isReadMode && (
+                <div className="px-8 py-4 border-t border-border/10 shrink-0 text-center">
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/25">{t("conversation.sessionEnded")}</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ═══ CIERRE ══════════════════════════════════════════════════════════ */}
+        {viewingPhase === "cierre" && (
+          <motion.div
+            key="cierre"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1.2 }}
+            className="min-h-screen flex flex-col items-center justify-center px-6 pt-16 pb-16"
+          >
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3, duration: 1 }}
+              className="text-[9px] uppercase tracking-[0.35em] text-muted-foreground/25 mb-10"
+            >
+              {character.name}
+            </motion.p>
+
+            <div className="max-w-xl text-center">
+              {closingLine ? (
+                <motion.p
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="font-display italic text-2xl md:text-3xl text-foreground/80 leading-relaxed"
+                >
+                  "{closingLine}"
+                </motion.p>
+              ) : (
+                <motion.span
+                  animate={{ opacity: [0.2, 0.6, 0.2] }}
+                  transition={{ duration: 1.6, repeat: Infinity }}
+                  className="inline-block h-5 w-px bg-foreground/30"
+                />
+              )}
+            </div>
+
+            {/* Emotion tag UI */}
+            <AnimatePresence>
+              {showCierreTagUI && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                  className="mt-14 w-full max-w-lg space-y-5"
+                >
+                  <div className="text-center">
+                    <p className="text-sm text-foreground/70">{t("conversation.describeConv")}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground/40">{t("conversation.chooseUpTo")}</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {cierreTagCats.map((cat) => (
+                      <div key={cat.label}>
+                        <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/30 mb-2">{cat.label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {cat.tags.map((tag) => {
+                            const active = cierreTags.includes(tag);
+                            const disabled = cierreTags.length >= 2 && !active;
+                            return (
+                              <button
+                                key={tag}
+                                onClick={() => {
+                                  if (disabled) return;
+                                  setCierreTags((prev) =>
+                                    prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag],
+                                  );
+                                }}
+                                disabled={disabled}
+                                className={`rounded-full px-3 py-1 text-[11px] border transition ${
+                                  active
+                                    ? "bg-primary/20 border-primary/50 text-primary/90"
+                                    : disabled
+                                    ? "border-border/15 text-muted-foreground/20 cursor-not-allowed"
+                                    : "border-border/30 text-muted-foreground/50 hover:border-border/60 hover:text-foreground/70"
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <AnimatePresence>
+                      {showCierreSkip && (
+                        <motion.button
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          onClick={() => handleCierreDone([])}
+                          className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition"
+                        >
+                          {t("conversation.skip")}
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                    <button
+                      onClick={() => handleCierreDone(cierreTags)}
+                      disabled={cierreSaving || cierreTags.length === 0}
+                      className="ml-auto rounded-full bg-gradient-amber text-primary-foreground px-6 py-2 text-xs font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-30 disabled:hover:scale-100"
+                    >
+                      {cierreSaving ? "…" : t("conversation.saveTagsBtn")}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <TrophyNotification trophyId={activeTrophy} onDismiss={() => setActiveTrophy(null)} />
     </div>
-  </motion.div>
   );
 };
 
-const NarratorPhase = ({ character, narratorText, onEnter }: { character: Character; narratorText: string; onEnter: () => void }) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// NARRATOR PHASE
+// ─────────────────────────────────────────────────────────────────────────────
+const NarratorPhase = ({
+  character,
+  narratorText,
+  onEnter,
+}: {
+  character: Character;
+  narratorText: string;
+  onEnter: () => void;
+}) => {
   const { t } = useLanguage();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(true);
@@ -761,7 +1185,6 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
   const paragraphTimestamps = useRef<number[]>([]);
   const paragraphs = narratorText.split(/\n\n+/).filter(Boolean);
 
-  // Fetch ElevenLabs audio on mount
   useEffect(() => {
     let blobUrl: string | null = null;
     fetchNarratorAudio(narratorText).then((url) => {
@@ -772,13 +1195,11 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [narratorText]);
 
-  // Play audio once loaded
   useEffect(() => {
     if (audioLoading || !audioUrl || !audioRef.current) return;
     audioRef.current.play().catch(() => {});
   }, [audioLoading, audioUrl]);
 
-  // Once we know the real audio duration, calculate proportional timestamps per paragraph
   const handleLoadedMetadata = () => {
     if (!audioRef.current) return;
     const duration = audioRef.current.duration;
@@ -786,21 +1207,18 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
     const totalWords = wordCounts.reduce((a, b) => a + b, 0);
     let cumulative = 0;
     paragraphTimestamps.current = wordCounts.map((wc) => {
-      // Reveal each paragraph 0.3s early so text is visible as narrator speaks it
       const ts = Math.max(0, (cumulative / totalWords) * duration - 0.3);
       cumulative += wc;
       return ts;
     });
   };
 
-  // Sync paragraph reveals to actual playback time
   const handleTimeUpdate = () => {
     if (!audioRef.current || !paragraphTimestamps.current.length) return;
-    const t = audioRef.current.currentTime;
-    setRevealedCount(paragraphTimestamps.current.filter((ts) => t >= ts).length);
+    const ct = audioRef.current.currentTime;
+    setRevealedCount(paragraphTimestamps.current.filter((ts) => ct >= ts).length);
   };
 
-  // Fallback: no ElevenLabs — browser TTS with word-count estimation
   useEffect(() => {
     if (audioLoading || audioUrl) return;
     timersRef.current.forEach(clearTimeout);
@@ -818,8 +1236,7 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
   const handleEnter = () => {
     if (exiting) return;
     timersRef.current.forEach(clearTimeout);
-    if (audioRef.current) { audioRef.current.pause(); }
-    else { stopSpeaking(); }
+    if (audioRef.current) { audioRef.current.pause(); } else { stopSpeaking(); }
     setExiting(true);
     setTimeout(onEnter, 950);
   };
@@ -840,21 +1257,12 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
         />
       )}
 
-      {/* Ambient portrait backdrop */}
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <img
-          src={character.portrait}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover opacity-20 blur-3xl scale-110"
-        />
+        <img src={character.portrait} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-3xl scale-110" />
         <div className="absolute inset-0 bg-background/88" />
-        <div
-          className="absolute inset-0"
-          style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }}
-        />
+        <div className="absolute inset-0" style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }} />
       </div>
 
-      {/* Skip button */}
       <button
         onClick={handleEnter}
         className="fixed top-6 right-6 z-20 inline-flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition"
@@ -862,7 +1270,6 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
         {t("conversation.skip")} <ChevronRight className="h-3 w-3" />
       </button>
 
-      {/* Loading state */}
       {audioLoading && (
         <div className="flex-1 flex items-center justify-center">
           <motion.p
@@ -875,30 +1282,22 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
         </div>
       )}
 
-      {/* Content */}
       {!audioLoading && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-24">
           <div className="max-w-2xl w-full space-y-10">
-
-            {/* Character header */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1.2 }}
               className="flex items-center gap-4"
             >
-              <img
-                src={character.portrait}
-                alt={character.name}
-                className="h-14 w-14 rounded-full object-cover border border-border/40"
-              />
+              <img src={character.portrait} alt={character.name} className="h-14 w-14 rounded-full object-cover border border-border/40" />
               <div>
                 <p className="font-display text-xl">{character.name}</p>
                 <p className="text-sm text-muted-foreground">{character.age} · {character.location}</p>
               </div>
             </motion.div>
 
-            {/* Narrator paragraphs revealed one by one */}
             <div className="space-y-6">
               <AnimatePresence>
                 {paragraphs.slice(0, revealedCount).map((p, i) => (
@@ -915,7 +1314,6 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
               </AnimatePresence>
             </div>
 
-            {/* CTA — appears after narration ends */}
             <AnimatePresence>
               {narrationDone && (
                 <motion.div
@@ -927,7 +1325,8 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
                     onClick={handleEnter}
                     className="inline-flex items-center gap-2 rounded-full bg-gradient-amber text-primary-foreground px-7 py-3.5 text-sm font-medium shadow-glow hover:scale-[1.02] transition"
                   >
-                    {t("conversation.meet")} {character.name} <ArrowRight className="h-4 w-4" />
+                    {t("conversation.meet")} {character.name}
+                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </motion.div>
               )}
@@ -939,12 +1338,41 @@ const NarratorPhase = ({ character, narratorText, onEnter }: { character: Charac
   );
 };
 
-const fmt = (s: number) => {
-  const m = Math.floor(s / 60).toString().padStart(2, "0");
-  const ss = (s % 60).toString().padStart(2, "0");
-  return `${m}:${ss}`;
+// ─────────────────────────────────────────────────────────────────────────────
+// CRISIS ALERT
+// ─────────────────────────────────────────────────────────────────────────────
+const CrisisAlert = ({ level }: { level: "low" | "high" }) => {
+  const { t } = useLanguage();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      className={`mt-8 rounded-2xl border p-4 space-y-2 ${
+        level === "high" ? "bg-amber-500/10 border-amber-500/30" : "bg-primary/8 border-primary/20"
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 text-base">{level === "high" ? "🟠" : "🔵"}</span>
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">
+            {level === "high" ? t("conversation.crisis.high") : t("conversation.crisis.low")}
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {level === "high" ? t("conversation.crisis.highSub") : t("conversation.crisis.lowSub")}
+          </p>
+          {level === "high" && (
+            <div className="pt-1 space-y-1 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground/80">{t("conversation.crisis.resources")}</p>
+              <p>🇪🇸 Spain — Teléfono de la Esperanza: 717 003 717</p>
+              <p>🇺🇸 US — Crisis Text Line: text HOME to 741741</p>
+              <p>🇬🇧 UK — Samaritans: 116 123</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
 };
-
-const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export default Conversation;

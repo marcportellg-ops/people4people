@@ -34,8 +34,12 @@ export type Character = {
     es?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
     it?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
     fr?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
+    de?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
+    pt?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
+    ca?: { narratorStory?: string; summary?: string; longStory?: string; intro?: string };
   };
   topEmotionTags?: string[];
+  emotionalPortraitUrl?: string;
   createdAt?: { toMillis: () => number } | null;
 };
 

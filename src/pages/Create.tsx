@@ -7,7 +7,7 @@ import { TrustBadge } from "@/components/Trust";
 import { characters } from "@/data/characters";
 import { getDraftCharacterReply, generateCharacterProfile, conductRefineInterview, conductIntakeInterview, generateIntakeSummary, generateCharacterName, generateNarratorStory, translateCharacterFields } from "@/lib/claude";
 import { saveCharacter, saveCharacterTranslations } from "@/lib/db";
-import { generatePortraits } from "@/lib/portraits";
+import { generatePortraits, generateEmotionalPortrait } from "@/lib/portraits";
 import { isSpeechSupported, startRecognition, fetchNarratorAudio, speakText, stopSpeaking } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -311,7 +311,15 @@ const Create = () => {
     if (!canCreate) { navigate("/subscribe"); return; }
     setPublishing(true);
     try {
-      const profile = await generateCharacterProfile(story, answers);
+      const baseDesc = answers[0] || "person";
+      const personDesc = portraitHints.trim() ? `${baseDesc}, ${portraitHints.trim()}` : baseDesc;
+      const ageNum = parseInt((answers[1] || "30").match(/\d+/)?.[0] ?? "30") || 30;
+
+      const [profile, emotionalPortraitUrl] = await Promise.all([
+        generateCharacterProfile(story, answers),
+        generateEmotionalPortrait(personDesc, ageNum).catch(() => null),
+      ]);
+
       const finalName = characterName || profile.name;
       const replaceName = (text: string) =>
         profile.name ? text.replaceAll(profile.name, finalName) : text;
@@ -327,6 +335,7 @@ const Create = () => {
           intro: finalIntro,
           portrait: selectedPortrait,
           ...(narratorStory ? { narratorStory } : {}),
+          ...(emotionalPortraitUrl ? { emotionalPortraitUrl } : {}),
         },
         user!.uid,
         user!.email ?? undefined,

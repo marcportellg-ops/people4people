@@ -24,15 +24,17 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem("p4p_lang", l);
   };
 
-  const t = (key: string): string => {
+  const t = (key: string, vars?: Record<string, string>): string => {
     const keys = key.split(".");
-    // Try current language first, fall back to English
     for (const source of [translations[lang], translations.en]) {
       let value: unknown = source;
       for (const k of keys) {
         value = (value as Record<string, unknown>)?.[k];
       }
-      if (typeof value === "string") return value;
+      if (typeof value === "string") {
+        if (!vars) return value;
+        return value.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+      }
     }
     return key;
   };

@@ -710,6 +710,39 @@ Return ONLY a valid JSON object (no markdown, no explanation):
   return JSON.parse(block.text);
 }
 
+export async function generateClosingLine(
+  character: { name: string; longStory: string },
+  messages: { role: "user" | "char"; text: string }[],
+  lang?: string,
+): Promise<string> {
+  const langName = lang ? LANG_NAMES[lang] ?? "English" : "English";
+  const helperMsgs = messages.filter((m) => m.role === "user");
+  if (helperMsgs.length === 0) return "";
+  const highlight = helperMsgs.reduce((best, m) => m.text.length > best.text.length ? m : best).text;
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 80,
+    messages: [{
+      role: "user",
+      content: `You are ${character.name}. The conversation is ending. Write one closing sentence — a farewell that gently echoes something meaningful the helper offered.
+
+Something they said: "${highlight.slice(0, 200)}"
+
+Rules:
+- First person, quiet and weighted
+- Echo something specific from their words without quoting directly
+- Not "goodbye" or "thank you" — a final thought that lingers
+- Max 110 characters
+- No quotation marks
+- Write in ${langName}
+
+Return ONLY the closing line.`,
+    }],
+  });
+  const block = response.content[0];
+  return block.type === "text" ? block.text.trim().replace(/^[""“”]|[""“”]$/g, "") : "";
+}
+
 const CRISIS_KEYWORDS = [
   "suicide", "suicidal", "kill myself", "end my life", "take my life",
   "not want to live", "don't want to live", "want to die", "wish i were dead",

@@ -1,20 +1,34 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Sparkles, Menu, X, ShieldCheck } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { LANGUAGE_LABELS, type Language } from "@/lib/translations";
 import { getMyCharacters, getUnseenDeliveryCount } from "@/lib/db";
 import { signOutUser } from "@/lib/auth";
 
+const LANGS: Language[] = ["en", "es", "it", "fr", "de", "pt", "ca"];
+
 export const TopNav = () => {
   const [open, setOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const [unseenCount, setUnseenCount] = useState(0);
   const location = useLocation();
   const onLanding = location.pathname === "/";
   const { user, isModerator } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang, setLang } = useLanguage();
+  const langRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!langOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [langOpen]);
   const links = [
     { to: "/gallery", label: t("nav.gallery") },
     { to: "/create", label: t("nav.create") },
@@ -88,6 +102,32 @@ export const TopNav = () => {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          {/* Language selector */}
+          <div ref={langRef} className="relative">
+            <button
+              onClick={() => setLangOpen((v) => !v)}
+              className="px-2 py-1 text-[11px] font-mono text-muted-foreground/45 hover:text-muted-foreground/70 transition"
+            >
+              {LANGUAGE_LABELS[lang]}
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 top-full mt-1 glass rounded-xl border border-border/60 py-1 z-[60] min-w-[52px] shadow-elevated">
+                {LANGS.map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => { setLang(l); setLangOpen(false); }}
+                    className={cn(
+                      "w-full text-left px-3 py-1.5 text-[11px] font-mono transition hover:bg-white/5",
+                      lang === l ? "text-primary" : "text-muted-foreground",
+                    )}
+                  >
+                    {LANGUAGE_LABELS[l]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <Link
             to="/subscribe"
             className="group inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm text-foreground/90 hover:text-foreground transition-colors"
@@ -171,6 +211,22 @@ export const TopNav = () => {
             >
               ✦ Premium
             </Link>
+            <div className="px-4 py-2 flex gap-2 flex-wrap">
+              {LANGS.map((l) => (
+                <button
+                  key={l}
+                  onClick={() => { setLang(l); setOpen(false); }}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-[11px] font-mono transition border",
+                    lang === l
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "text-muted-foreground border-border/40 hover:text-foreground",
+                  )}
+                >
+                  {LANGUAGE_LABELS[l]}
+                </button>
+              ))}
+            </div>
             {user ? (
               <button
                 onClick={() => { signOutUser(); setOpen(false); }}

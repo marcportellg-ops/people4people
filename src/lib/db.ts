@@ -145,6 +145,10 @@ export async function pauseConversation(conversationId: string, timeLeft: number
   await updateDoc(doc(db, "conversations", conversationId), { paused: true, timeLeft });
 }
 
+export async function discardPausedConversation(conversationId: string): Promise<void> {
+  await updateDoc(doc(db, "conversations", conversationId), { paused: false });
+}
+
 export async function getPausedConversation(
   helperId: string,
   characterId: string,

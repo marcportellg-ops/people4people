@@ -4,9 +4,10 @@
 export type AmbientStatus = "Heavy" | "Searching" | "Tender" | "Anxious" | "Withdrawn" | "Hopeful";
 
 // ── Volume ────────────────────────────────────────────────────────────────────
-// Extremely subtle — like music heard through a wall. Listener should not
-// consciously notice it until it's muted.
-const MASTER_VOL = 0.012;
+// Near-imperceptible — only noticed when consciously listening for it.
+const MASTER_VOL = 0.006;
+// Level during character speech — barely audible, fades over 1.5 s
+const SPEAKING_VOL = 0.0015;
 
 // ── Reverb impulse response (decaying white noise) ───────────────────────────
 function buildReverb(ctx: AudioContext, duration: number, decay: number): ConvolverNode {
@@ -101,7 +102,21 @@ class AmbientEngine {
   private timers: ReturnType<typeof setInterval>[] = [];  // setInterval handles
   private toIds: ReturnType<typeof setTimeout>[] = [];    // setTimeout handles
   private muted = false;
+  private speakingDucked = false;
   private currentStatus: AmbientStatus | null = null;
+
+  private _applyGain(timeConstant = 0.35): void {
+    if (!this.master || !this.ctx) return;
+    let target: number;
+    if (this.muted) {
+      target = 0;
+    } else if (this.speakingDucked) {
+      target = SPEAKING_VOL;
+    } else {
+      target = MASTER_VOL;
+    }
+    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, timeConstant);
+  }
 
   private ensureCtx(): AudioContext | null {
     if (typeof AudioContext === "undefined" && typeof (window as any).webkitAudioContext === "undefined") return null;
@@ -299,13 +314,26 @@ class AmbientEngine {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(
-        muted ? 0 : MASTER_VOL,
-        this.ctx.currentTime,
-        0.35,
-      );
-    }
+    this._applyGain(0.35);
+  }
+
+  setDuckedForSpeaking(ducked: boolean): void {
+    this.speakingDucked = ducked;
+    // duck: fade to SPEAKING_VOL over ~1.5 s (3× timeConstant ≈ 95%)
+    // restore: fade back over ~2 s
+    this._applyGain(ducked ? 0.5 : 0.67);
+  }
+
+  duckForPortrait(durationMs: number): void {
+    if (!this.master || !this.ctx) return;
+    const reduced = this.muted ? 0 : MASTER_VOL * 0.2;
+    this.master.gain.setTargetAtTime(reduced, this.ctx.currentTime, 0.5);
+    const tid = setTimeout(() => {
+      if (this.master && this.ctx && !this.muted && !this.speakingDucked) {
+        this.master.gain.setTargetAtTime(MASTER_VOL, this.ctx.currentTime, 0.8);
+      }
+    }, durationMs);
+    this.toIds.push(tid);
   }
 }
 
