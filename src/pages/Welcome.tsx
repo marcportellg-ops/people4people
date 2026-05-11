@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Edit3, Sparkles, Heart } from "lucide-react";
@@ -208,17 +208,17 @@ const Welcome = () => {
 
   const c = CONTENT[lang] ?? CONTENT.en;
 
-  const goCreate = async () => {
-    if (user) await markOnboarded(user.uid).catch(() => {});
-    setOnboardedTrue();
-    navigate("/create");
-  };
+  // Mark onboarded as soon as the user sees this page — not on button click.
+  // If they close before clicking through, they still won't see it again.
+  useEffect(() => {
+    if (user) {
+      markOnboarded(user.uid).catch(() => {});
+      setOnboardedTrue();
+    }
+  }, [user]);
 
-  const goDemo = async () => {
-    if (user) await markOnboarded(user.uid).catch(() => {});
-    setOnboardedTrue();
-    navigate("/demo");
-  };
+  const goCreate = () => navigate("/create");
+  const goDemo = () => navigate("/demo");
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden py-20 px-6">
