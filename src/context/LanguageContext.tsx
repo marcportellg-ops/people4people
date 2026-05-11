@@ -1,11 +1,13 @@
 import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 import { translations, type Language } from "@/lib/translations";
+import { useAuth } from "@/context/AuthContext";
+import { setUserLanguage } from "@/lib/db";
 
 type LanguageContextType = {
   lang: Language;
   setLang: (l: Language) => void;
-  t: (key: string) => string;
+  t: (key: string, vars?: Record<string, string>) => string;
 };
 
 const LanguageContext = createContext<LanguageContextType>({
@@ -15,6 +17,8 @@ const LanguageContext = createContext<LanguageContextType>({
 });
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
+
   const [lang, setLangState] = useState<Language>(
     () => (localStorage.getItem("p4p_lang") as Language) ?? "en",
   );
@@ -22,6 +26,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const setLang = (l: Language) => {
     setLangState(l);
     localStorage.setItem("p4p_lang", l);
+    if (user) setUserLanguage(user.uid, l).catch(() => {});
   };
 
   const t = (key: string, vars?: Record<string, string>): string => {

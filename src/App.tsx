@@ -4,12 +4,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/context/AuthContext";
-import { LanguageProvider } from "@/context/LanguageContext";
+import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { PlanProvider } from "@/context/PlanContext";
 import { UserProfileProvider, useUserProfile } from "@/context/UserProfileContext";
 import { ProtectedRoute, ModeratorRoute } from "@/components/ProtectedRoute";
 import { AliasSelector } from "@/components/AliasSelector";
 import { useAuth } from "@/context/AuthContext";
+import { useEffect, useRef } from "react";
+import type { Language } from "@/lib/translations";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -24,6 +26,23 @@ import Welcome from "./pages/Welcome.tsx";
 import DemoConversation from "./pages/DemoConversation.tsx";
 
 const queryClient = new QueryClient();
+
+// Applies the Firestore-persisted language preference on first load.
+// Runs once after UserProfile finishes loading — covers cross-device scenarios
+// where localStorage has a stale or missing language.
+function LangSync() {
+  const { preferredLang, loading } = useUserProfile();
+  const { setLang } = useLanguage();
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (applied.current || loading || !preferredLang) return;
+    applied.current = true;
+    setLang(preferredLang as Language);
+  }, [loading, preferredLang]);
+
+  return null;
+}
 
 const ONBOARDING_GATE_BYPASS = ["/welcome", "/demo"]; // don't redirect away from these
 const ALIAS_GATE_BYPASS = ["/demo"]; // alias not required here
@@ -60,6 +79,7 @@ const App = () => (
         <AuthProvider>
           <LanguageProvider>
           <UserProfileProvider>
+          <LangSync />
           <PlanProvider>
           <OnboardingGate>
           <AliasGate>

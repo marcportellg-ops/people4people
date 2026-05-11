@@ -261,6 +261,9 @@ export type UserDoc = {
   lastConversationDate?: string;
   currentStreak?: number;
   onboarded?: boolean;
+  onboardingCompleted?: boolean;
+  onboardingCompletedAt?: Timestamp;
+  language?: string;
 };
 
 export async function ensureUserDoc(uid: string): Promise<void> {
@@ -278,7 +281,15 @@ export async function checkIsOnboarded(uid: string): Promise<boolean> {
 }
 
 export async function markOnboarded(uid: string): Promise<void> {
-  await setDoc(doc(db, "users", uid), { onboarded: true }, { merge: true });
+  await setDoc(doc(db, "users", uid), {
+    onboarded: true,
+    onboardingCompleted: true,
+    onboardingCompletedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+export async function setUserLanguage(uid: string, language: string): Promise<void> {
+  await setDoc(doc(db, "users", uid), { language }, { merge: true });
 }
 
 export async function getUserPlan(uid: string): Promise<Plan> {

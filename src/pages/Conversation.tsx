@@ -92,17 +92,18 @@ const fmt = (s: number) => {
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // ─────────────────────────────────────────────────────────────────────────────
-const Conversation = () => {
+const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => {
   const { id } = useParams();
   const { user } = useAuth();
   const { t, lang } = useLanguage();
   const { canConverse, refetch: refetchPlan } = usePlan();
   const { refetch: refetchProfile } = useUserProfile();
   const navigate = useNavigate();
+  const isDemo = !!demoCharacter;
 
   // ── Character ─────────────────────────────────────────────────────────────
   const [character, setCharacter] = useState<Character | undefined>(
-    id ? getCharacter(id) : undefined,
+    demoCharacter ?? (id ? getCharacter(id) : undefined),
   );
 
   // ── Phase navigation ──────────────────────────────────────────────────────
@@ -182,13 +183,13 @@ const Conversation = () => {
 
   // ── Load Firestore character ───────────────────────────────────────────────
   useEffect(() => {
-    if (character || !id) return;
+    if (isDemo || character || !id) return;
     getCharacterById(id).then((c) => { if (c) setCharacter(c); });
-  }, [id]);
+  }, [id, isDemo]);
 
   // ── Check for paused conversation → show resume modal ────────────────────
   useEffect(() => {
-    if (!user || !character || resumeCheckedRef.current) return;
+    if (!user || !character || resumeCheckedRef.current || isDemo) return;
     resumeCheckedRef.current = true;
     getPausedConversation(user.uid, character.id).then((paused) => {
       if (!paused || paused.messages.length === 0) return;
@@ -268,13 +269,13 @@ const Conversation = () => {
 
   // ── Create Firestore conversation when entering CONVERSACIÓN ──────────────
   useEffect(() => {
-    if (cinemaPhase !== "conversacion" || !character || !user || isResumed) return;
+    if (cinemaPhase !== "conversacion" || !character || !user || isResumed || isDemo) return;
     if (!canConverse) { navigate("/subscribe"); return; }
     createConversation(character.id, user.uid).then((cid) => {
       setConversationId(cid);
       refetchPlan();
     }).catch(() => {});
-  }, [cinemaPhase, character, user, isResumed]);
+  }, [cinemaPhase, character, user, isResumed, isDemo]);
 
   // ── Countdown timer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -328,14 +329,14 @@ const Conversation = () => {
   useEffect(() => () => {
     stopSpeaking();
     ambient.setDuckedForSpeaking(false);
-    if (!skipSaveRef.current && !endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
+    if (!isDemo && !skipSaveRef.current && !endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
       pauseConversation(conversationIdRef.current, timeLeftRef.current).catch(() => {});
     }
-  }, []);
+  }, [isDemo]);
 
   // ── Session end: summarize, moderate, trophies ────────────────────────────
   useEffect(() => {
-    if (!ended || !conversationId || !character || !user) return;
+    if (!ended || !conversationId || !character || !user || isDemo) return;
     endConversation(conversationId).catch(() => {});
     updateStreak(user.uid).catch(() => {});
     const msgs = messagesRef.current.slice(1);
@@ -439,6 +440,7 @@ const Conversation = () => {
   };
 
   const handleSaveForLater = async () => {
+    if (isDemo) { navigate("/gallery"); return; }
     if (isSaving) return;
     setIsSaving(true);
     if (conversationId) {
@@ -447,13 +449,11 @@ const Conversation = () => {
     skipSaveRef.current = true;
     setIsSaving(false);
     setShowSaveConfirm(true);
-    setTimeout(() => {
-      navigate("/gallery");
-    }, 2800);
+    setTimeout(() => { navigate("/gallery"); }, 2800);
   };
 
   const handleExitConfirm = () => {
-    skipSaveRef.current = true;
+    if (!isDemo) skipSaveRef.current = true;
     navigate("/gallery");
   };
 
@@ -512,7 +512,7 @@ const Conversation = () => {
       const charT = now();
       const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: reply, t: charT }];
       setMessages(updatedMsgs);
-      if (conversationId) {
+      if (conversationId && !isDemo) {
         await saveMessages(conversationId, [
           { role: "user", text: userMsg.text, t: userMsg.t },
           { role: "char", text: reply, t: charT },
@@ -543,6 +543,7 @@ const Conversation = () => {
   };
 
   const handleCierreDone = async (tags: string[]) => {
+    if (isDemo) { navigate("/gallery"); return; }
     setCierreSaving(true);
     if (conversationId && tags.length > 0) {
       await saveEmotionTags(conversationId, tags, character?.id ?? "").catch(() => {});
@@ -613,6 +614,13 @@ const Conversation = () => {
           style={{ background: ATMOSPHERE[character.emotionalStatus] ?? "" }}
         />
       </div>
+
+      {/* Demo banner */}
+      {isDemo && (
+        <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-center py-1.5 bg-primary/8 border-b border-primary/15">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-primary/60">{t("conversation.demoNote")}</p>
+        </div>
+      )}
 
       {/* Resume draft modal */}
       <AnimatePresence>
@@ -704,7 +712,7 @@ const Conversation = () => {
       </AnimatePresence>
 
       {/* Phase navigation bar */}
-      <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-center gap-5 py-4">
+      <div className={`fixed inset-x-0 z-50 flex items-center justify-center gap-5 py-4 ${isDemo ? "top-7" : "top-0"}`}>
         {(["entrada", "conversacion", "cierre"] as CinemaPhase[]).map((p, i) => {
           const isActive = viewingPhase === p;
           const isReached = p === "entrada" || (p === "conversacion" && (cinemaPhase === "conversacion" || cinemaPhase === "cierre")) || p === cinemaPhase;
@@ -731,7 +739,7 @@ const Conversation = () => {
         {viewingPhase === "entrada" && (
           <motion.div
             key="entrada"
-            className="min-h-screen flex flex-col items-center justify-center px-6 pt-16"
+            className={`min-h-screen flex flex-col items-center justify-center px-6 ${isDemo ? "pt-24" : "pt-16"}`}
             animate={{ opacity: entradaExiting ? 0 : 1, scale: entradaExiting ? 0.97 : 1 }}
             transition={{ duration: 1.5, ease: [0.65, 0, 0.35, 1] }}
           >
@@ -820,7 +828,7 @@ const Conversation = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8 }}
-            className="min-h-screen flex pt-14"
+            className={`min-h-screen flex ${isDemo ? "pt-21" : "pt-14"}`}
           >
             {/* Left sidebar */}
             <aside className="w-48 shrink-0 sticky top-14 self-start h-[calc(100vh-3.5rem)] flex flex-col items-center px-4 py-8 border-r border-border/15 overflow-hidden">
@@ -889,15 +897,17 @@ const Conversation = () => {
                   {/* Discrete nav buttons */}
                   {!ended && !isReadMode && (
                     <>
+                      {!isDemo && (
+                        <button
+                          onClick={handleSaveForLater}
+                          disabled={isSaving}
+                          className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/22 hover:text-muted-foreground/50 transition disabled:opacity-30"
+                        >
+                          {t("conversation.saveForLater")}
+                        </button>
+                      )}
                       <button
-                        onClick={handleSaveForLater}
-                        disabled={isSaving}
-                        className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/22 hover:text-muted-foreground/50 transition disabled:opacity-30"
-                      >
-                        {t("conversation.saveForLater")}
-                      </button>
-                      <button
-                        onClick={() => setShowExitModal(true)}
+                        onClick={() => isDemo ? handleExitConfirm() : setShowExitModal(true)}
                         className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/22 hover:text-muted-foreground/50 transition"
                       >
                         {t("conversation.backToGalleryBtn")}

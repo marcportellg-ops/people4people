@@ -18,6 +18,7 @@ type UserProfileContextType = {
   onboarded: boolean;
   loading: boolean;
   aliasLoaded: boolean;
+  preferredLang: string | null;
   refetch: () => void;
   setAlias: (alias: string) => Promise<void>;
   setOnboardedTrue: () => void;
@@ -26,8 +27,8 @@ type UserProfileContextType = {
 const UserProfileContext = createContext<UserProfileContextType>({
   alias: null, level: "Semilla", levelEmoji: "🌱", isStar: false,
   trophies: [], streak: 0, avgScore: 0, qualitySessions: 0,
-  onboarded: false, loading: true, aliasLoaded: false, refetch: () => {},
-  setAlias: async () => {}, setOnboardedTrue: () => {},
+  onboarded: false, loading: true, aliasLoaded: false, preferredLang: null,
+  refetch: () => {}, setAlias: async () => {}, setOnboardedTrue: () => {},
 });
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
@@ -42,6 +43,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [aliasLoaded, setAliasLoaded] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
+  const [preferredLang, setPreferredLang] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) { setLoading(false); setAliasLoaded(true); return; }
@@ -62,7 +64,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
       const userDoc = userSnap.exists() ? (userSnap.data() as UserDoc) : {};
       setStreak(userDoc.currentStreak ?? 0);
-      setOnboarded(userDoc.onboarded === true);
+      setOnboarded((userDoc.onboardingCompleted === true) || (userDoc.onboarded === true));
+      setPreferredLang(userDoc.language ?? null);
 
       const scored = convs.filter((c) => c.moderation?.score != null);
       const avg = scored.length ? scored.reduce((s, c) => s + c.moderation!.score, 0) / scored.length : 0;
@@ -89,7 +92,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     <UserProfileContext.Provider value={{
       alias, level, levelEmoji: LEVEL_META[level].emoji, isStar,
       trophies, streak, avgScore, qualitySessions,
-      onboarded, loading, aliasLoaded, refetch: load, setAlias,
+      onboarded, loading, aliasLoaded, preferredLang, refetch: load, setAlias,
       setOnboardedTrue: () => setOnboarded(true),
     }}>
       {children}
