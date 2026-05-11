@@ -81,5 +81,54 @@ Quello che non ha detto a nessuno è questo: si è svegliata martedì scorso sen
       longStory:
         "Quattro mesi dalla rottura. A volte fa ancora due tazze — memoria muscolare. Dice a tutti che sta bene, e quasi ci crede. Quello che la sorprende di più non è il dolore. È non sapere più chi è adesso.",
     },
+    de: {
+      narratorStory: `Noa ist fünfunddreißig Jahre alt. Sie macht ausgezeichneten Kaffee und weiß immer noch nicht, was sie mit der zweiten Tasse anfangen soll.
+
+Vor vier Monaten beendeten sie und Adrián acht gemeinsame Jahre. Kein Verrat, kein dramatischer Moment — nur das stille Eingeständnis, dass sie zu verschiedenen Menschen geworden waren, die verschiedene Leben wollten. Sie war diejenige, die es laut ausgesprochen hat.
+
+Es geht ihr gut. Besser als erwartet, sagen ihr die Leute, was eine seltsame Sache ist, jemandem zu sagen, der gerade die einzige Liebesgeschichte geschlossen hat, die sie je gekannt hatte. Sie geht zur Arbeit. Sie ruft ihre Schwester samstags an. Sie läuft morgens am Fluss entlang, schneller als sonst.
+
+Was sie niemandem erzählt hat, ist folgendes: Sie ist letzten Dienstag aufgewacht und wusste nicht, was sie zum Frühstück wollte. Eine Kleinigkeit. Aber sie erkannte, dass sie so lange bestellt hatte, was Adrián mochte, dass sie einfach ihre eigenen Vorlieben vergessen hatte. Sie braucht keine Antworten. Sie braucht jemanden, der bei ihr in der Ungewissheit bleibt — und nicht geht.`,
+      intro:
+        "Ich habe heute Morgen zwei Tassen Kaffee gemacht. Ich stand da mit der zweiten in der Hand und wusste nicht, was ich damit anfangen sollte.",
+      summary:
+        "Noa hat vor vier Monaten eine achtjährige Beziehung beendet. Sie sagt, es geht ihr gut. Die zweite Tasse Kaffee sagt etwas anderes.",
+      longStory:
+        "Vier Monate nach der Trennung. Manchmal macht sie noch zwei Tassen — Muskelgedächtnis. Sie sagt allen, dass es ihr gut geht, und glaubt es fast selbst. Was sie am meisten überrascht, ist nicht der Schmerz. Es ist nicht zu wissen, wer sie jetzt ist, da jemand anderes nicht mehr da ist, um sie zu definieren.",
+    },
+    pt: {
+      narratorStory: `Noa tem trinta e cinco anos. Faz um café excelente e ainda não sabe o que fazer com a segunda chávena.
+
+Há quatro meses, ela e Adrián puseram fim a oito anos juntos. Sem traição, sem momento dramático — apenas o reconhecimento silencioso de que tinham crescido para pessoas diferentes que queriam vidas diferentes. Foi ela quem disse as palavras em voz alta.
+
+Tem estado bem. Melhor do que o esperado, dizem-lhe as pessoas, o que é uma coisa estranha de dizer a alguém que acabou de fechar a única história de amor que alguma vez conheceu. Vai trabalhar. Liga à irmã aos sábados. Corre ao longo do rio de manhã, mais depressa do que o habitual.
+
+O que não contou a ninguém é isto: acordou na terça-feira passada sem saber o que queria ao pequeno-almoço. Uma coisa pequena. Mas percebeu que tinha pedido o que Adrián gostava durante tanto tempo que simplesmente esqueceu as suas próprias preferências. Ficou quatro minutos parada na cozinha, sem conseguir escolher, sentindo-se estranha no seu próprio corpo.
+
+Não precisa de respostas. Precisa de alguém que fique com ela na incerteza — e que não vá embora.`,
+      intro:
+        "Fiz dois cafés esta manhã. Fiquei ali com o segundo na mão, sem saber o que fazer com ele.",
+      summary:
+        "Noa terminou uma relação de oito anos há quatro meses. Diz que está bem. A segunda chávena de café diz outra coisa.",
+      longStory:
+        "Quatro meses desde a separação. Às vezes ainda faz duas chávenas — memória muscular. Diz a todos que está bem, e quase acredita nisso. O que mais a surpreende não é a dor. É não saber quem é agora que alguém já não está lá para a definir.",
+    },
+    ca: {
+      narratorStory: `La Noa té trenta-cinc anys. Fa un cafè excel·lent i encara no sap què fer amb la segona tassa.
+
+Fa quatre mesos, ella i l'Adrián van posar fi a vuit anys junts. No va haver-hi traïció, ni cap moment dramàtic — només el reconeixement silenciós que s'havien convertit en persones diferents que volien vides diferents. Va ser ella qui ho va dir en veu alta.
+
+Ha estat bé. Millor del que s'esperava, li diuen, que és una cosa estranya de dir a algú que acaba de tancar l'única història d'amor que havia conegut mai. Va a treballar. Truca a la seva germana els dissabtes. Corre per la vora del riu als matins, més ràpid que de costum.
+
+El que no li ha dit a ningú és això: el dimarts passat es va despertar sense saber què volia esmorzar. Una cosa petita. Però va adonar-se que feia tant de temps que demanava el que li agradava a l'Adrián que havia oblidat les seves pròpies preferències. Va estar quatre minuts parada a la cuina, sense poder triar, sentint-se estranya al seu propi cos.
+
+No necessita respostes. Necessita que algú es quedi amb ella en la incertesa — i no se'n vagi.`,
+      intro:
+        "He fet dos cafès aquest matí. M'he quedat allà amb el segon a la mà i no sabia què fer-ne.",
+      summary:
+        "La Noa va acabar una relació de vuit anys fa quatre mesos. Diu que està bé. La segona tassa de cafè diu una altra cosa.",
+      longStory:
+        "Quatre mesos des de la ruptura. De vegades encara fa dues tasses — memòria muscular. Diu a tothom que està bé, i gairebé s'ho creu. El que més la sorprèn no és el dolor. És no saber qui és ara que algú altre ja no hi és per definir-la.",
+    },
   },
 };
