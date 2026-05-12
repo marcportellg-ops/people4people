@@ -13,7 +13,7 @@ import {
   saveConversationSummary, saveConversationModeration, saveNarratorStory,
   saveCharacterTranslations, getPausedConversation, pauseConversation, discardPausedConversation,
   getUserTrophies, awardTrophies, setUserLevel, updateStreak,
-  rebuildWeeklyRanking, getHelperConversations, saveEmotionTags,
+  rebuildWeeklyRanking, getHelperConversations, saveEmotionTags, markNoaCompleted,
 } from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
@@ -97,7 +97,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const { user } = useAuth();
   const { t, lang } = useLanguage();
   const { canConverse, refetch: refetchPlan } = usePlan();
-  const { refetch: refetchProfile } = useUserProfile();
+  const { refetch: refetchProfile, setNoaCompletedTrue } = useUserProfile();
   const navigate = useNavigate();
   const isDemo = !!demoCharacter;
 
@@ -122,7 +122,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [timeLeft, setTimeLeft] = useState(15 * 60);
+  const [timeLeft, setTimeLeft] = useState(isDemo ? 3 * 60 : 15 * 60);
   const [ended, setEnded] = useState(false);
   const [fullSession, setFullSession] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -163,7 +163,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const recognizerRef = useRef<SpeechRecognition | null>(null);
   const endedRef = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
-  const timeLeftRef = useRef(15 * 60);
+  const timeLeftRef = useRef(isDemo ? 3 * 60 : 15 * 60);
   const resumeCheckedRef = useRef(false);
   const skipSaveRef = useRef(false);
 
@@ -201,7 +201,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   // ── Lazy translations ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!character || lang === "en") return;
-    const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
+    const tl = lang as "es" | "it" | "fr";
     const existing = character.translations?.[tl];
     if (existing?.narratorStory && existing.summary && existing.longStory && existing.intro) return;
     const isFirestoreChar = !characters.find((c) => c.id === character.id);
@@ -237,7 +237,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   // ── Fetch opening text for ENTRADA ────────────────────────────────────────
   useEffect(() => {
     if (phase !== "conversation" || !character || isResumed) return;
-    const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
+    const tl = lang as "es" | "it" | "fr";
     const staticFallback = (lang !== "en" && character.translations?.[tl]?.intro) || character.intro;
     setOpeningText(staticFallback);
     generateDynamicOpening(character, lang)
@@ -320,8 +320,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   // ── CIERRE: timer for tag UI and skip button ──────────────────────────────
   useEffect(() => {
     if (cinemaPhase !== "cierre") return;
-    const t1 = setTimeout(() => setShowCierreTagUI(true), 3000);
-    const t2 = setTimeout(() => setShowCierreSkip(true), 8000);
+    const t1 = setTimeout(() => setShowCierreTagUI(true), isDemo ? 1200 : 3000);
+    const t2 = setTimeout(() => setShowCierreSkip(true), isDemo ? 2500 : 8000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [cinemaPhase]);
 
@@ -453,7 +453,12 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   };
 
   const handleExitConfirm = () => {
-    if (!isDemo) skipSaveRef.current = true;
+    if (isDemo) {
+      if (user) { markNoaCompleted(user.uid).catch(() => {}); setNoaCompletedTrue(); }
+      navigate("/gallery");
+      return;
+    }
+    skipSaveRef.current = true;
     navigate("/gallery");
   };
 
@@ -543,7 +548,11 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   };
 
   const handleCierreDone = async (tags: string[]) => {
-    if (isDemo) { navigate("/gallery"); return; }
+    if (isDemo) {
+      if (user) { markNoaCompleted(user.uid).catch(() => {}); setNoaCompletedTrue(); }
+      navigate("/gallery");
+      return;
+    }
     setCierreSaving(true);
     if (conversationId && tags.length > 0) {
       await saveEmotionTags(conversationId, tags, character?.id ?? "").catch(() => {});
@@ -582,7 +591,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
       <NarratorPhase
         character={character}
         narratorText={(() => {
-          const tl = lang as "es" | "it" | "fr" | "de" | "pt" | "ca";
+          const tl = lang as "es" | "it" | "fr";
           return (lang !== "en" && character.translations?.[tl]?.narratorStory) || (character.narratorStory ?? "");
         })()}
         onEnter={() => setPhase("conversation")}
@@ -619,6 +628,13 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
       {isDemo && (
         <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-center py-1.5 bg-primary/8 border-b border-primary/15">
           <p className="text-[10px] uppercase tracking-[0.2em] text-primary/60">{t("conversation.demoNote")}</p>
+          <button
+            onClick={handleExitConfirm}
+            className="absolute right-4 text-sm text-muted-foreground/40 hover:text-foreground/70 transition leading-none"
+            aria-label="Exit demo"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1154,7 +1170,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                     </AnimatePresence>
                     <button
                       onClick={() => handleCierreDone(cierreTags)}
-                      disabled={cierreSaving || cierreTags.length === 0}
+                      disabled={cierreSaving || (!isDemo && cierreTags.length === 0)}
                       className="ml-auto rounded-full bg-gradient-amber text-primary-foreground px-6 py-2 text-xs font-medium shadow-glow hover:scale-[1.02] transition disabled:opacity-30 disabled:hover:scale-100"
                     >
                       {cierreSaving ? "…" : t("conversation.saveTagsBtn")}

@@ -47,16 +47,20 @@ function LangSync() {
 const ONBOARDING_GATE_BYPASS = ["/welcome", "/demo"]; // don't redirect away from these
 const ALIAS_GATE_BYPASS = ["/demo"]; // alias not required here
 
-// Redirects un-onboarded users to /welcome synchronously at render time
+// Redirects users through the onboarding funnel:
+//   !onboarded            → /welcome  (alias + language choice)
+//   onboarded && !noa     → /demo     (Noa conversation, skipping alias step)
+//   onboarded && noa done → no redirect
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { user, isModerator, loading: authLoading } = useAuth();
-  const { onboarded, loading: profileLoading } = useUserProfile();
+  const { onboarded, noaCompleted, loading: profileLoading } = useUserProfile();
   const location = useLocation();
 
   if (authLoading || profileLoading) return <>{children}</>;
   if (!user || isModerator) return <>{children}</>;
   if (ONBOARDING_GATE_BYPASS.includes(location.pathname)) return <>{children}</>;
   if (!onboarded) return <Navigate to="/welcome" replace />;
+  if (!noaCompleted) return <Navigate to="/demo" replace />;
   return <>{children}</>;
 }
 

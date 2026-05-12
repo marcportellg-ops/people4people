@@ -197,7 +197,7 @@ const CONTENT: Record<Language, {
   },
 };
 
-const LANGS: Language[] = ["en", "es", "it", "fr", "de", "pt", "ca"];
+const LANGS: Language[] = ["en", "es", "it", "fr"];
 
 const Welcome = () => {
   const { lang, setLang } = useLanguage();
@@ -209,11 +209,11 @@ const Welcome = () => {
   const c = CONTENT[lang] ?? CONTENT.en;
 
   // Mark onboarded as soon as the user sees this page — not on button click.
-  // If they close before clicking through, they still won't see it again.
+  // Writes to both localStorage (instant, same device) and Firestore (cross-device).
   useEffect(() => {
     if (user) {
       markOnboarded(user.uid).catch(() => {});
-      setOnboardedTrue();
+      setOnboardedTrue(); // also writes localStorage via context
     }
   }, [user]);
 

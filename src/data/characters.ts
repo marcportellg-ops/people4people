@@ -58,6 +58,20 @@ export const characters: Character[] = [
     emotionalStatus: "Searching",
     tags: ["separation", "identity", "midlife"],
     location: "Madrid, ES",
+    translations: {
+      es: {
+        intro: "Sigo alargando la mano hacia el teléfono para contarle cosas. Y entonces recuerdo.",
+        summary: "Recién separada. Intentando recordar quién es por sí misma.",
+      },
+      it: {
+        intro: "Continuo ad allungare la mano verso il telefono per dirgli le cose. E poi mi ricordo.",
+        summary: "Appena separata. Cerca di ricordare chi è da sola.",
+      },
+      fr: {
+        intro: "Je tends la main vers le téléphone pour lui dire des choses. Et puis je me souviens.",
+        summary: "Récemment séparée. Elle essaie de se rappeler qui elle est seule.",
+      },
+    },
   },
   {
     id: "marta",
@@ -73,6 +87,20 @@ export const characters: Character[] = [
     emotionalStatus: "Tender",
     tags: ["grief", "family", "loss"],
     location: "Lisbon, PT",
+    translations: {
+      es: {
+        intro: "He vuelto a escuchar su buzón de voz esta mañana. Solo para oír su voz una vez más.",
+        summary: "Llorando a su madre. El tiempo se detuvo, y el mundo siguió adelante.",
+      },
+      it: {
+        intro: "Stamattina ho riascoltato il suo messaggio vocale. Solo per sentire la sua voce un'altra volta.",
+        summary: "In lutto per sua madre. Il tempo si è fermato, e il mondo ha continuato a muoversi.",
+      },
+      fr: {
+        intro: "J'ai réécouté son message ce matin. Juste pour entendre sa voix une fois de plus.",
+        summary: "En deuil de sa mère. Le temps s'est arrêté, et le monde a continué d'avancer.",
+      },
+    },
   },
   {
     id: "david",
@@ -88,6 +116,20 @@ export const characters: Character[] = [
     emotionalStatus: "Anxious",
     tags: ["anxiety", "transitions", "self-esteem"],
     location: "Manchester, UK",
+    translations: {
+      es: {
+        intro: "Hice una lista de todo lo que podría salir mal. Eran cuatro páginas.",
+        summary: "Angustiado por abandonar su casa por primera vez.",
+      },
+      it: {
+        intro: "Ho fatto un elenco di tutto quello che potrebbe andare storto. Erano quattro pagine.",
+        summary: "Ansioso per il primo distacco da casa.",
+      },
+      fr: {
+        intro: "J'ai fait une liste de tout ce qui pouvait mal tourner. C'était quatre pages.",
+        summary: "Anxieux à l'idée de quitter la maison pour la première fois.",
+      },
+    },
   },
   {
     id: "amina",
@@ -103,6 +145,20 @@ export const characters: Character[] = [
     emotionalStatus: "Heavy",
     tags: ["money", "shame", "isolation"],
     location: "Toronto, CA",
+    translations: {
+      es: {
+        intro: "Volví a revisar el saldo a las 2 de la mañana. Luego giré el teléfono boca abajo y fingí que no lo había hecho.",
+        summary: "Abrumada por las deudas. Cargándolas sola, en silencio.",
+      },
+      it: {
+        intro: "Alle 2 di notte ho controllato di nuovo il saldo. Poi ho girato il telefono a faccia in giù fingendo di non averlo fatto.",
+        summary: "Sopraffatta dai debiti. Li porta da sola, in silenzio.",
+      },
+      fr: {
+        intro: "J'ai encore consulté mon solde à 2h du matin. Puis j'ai retourné mon téléphone face contre table en faisant semblant de ne pas l'avoir fait.",
+        summary: "Débordée par les dettes. Elle les porte seule, en silence.",
+      },
+    },
   },
   {
     id: "luis",
@@ -118,6 +174,20 @@ export const characters: Character[] = [
     emotionalStatus: "Withdrawn",
     tags: ["loneliness", "identity", "purpose"],
     location: "Buenos Aires, AR",
+    translations: {
+      es: {
+        intro: "Esta tarde recibí una llamada. Spam. Aun así sentí algo cuando vi la pantalla iluminarse.",
+        summary: "Solo después de perder su trabajo. Los días se sienten sin forma.",
+      },
+      it: {
+        intro: "Questo pomeriggio ho ricevuto una chiamata. Spam. Ho comunque sentito qualcosa quando ho visto lo schermo illuminarsi.",
+        summary: "Solo dopo aver perso il lavoro. Le giornate sembrano senza forma.",
+      },
+      fr: {
+        intro: "Cet après-midi j'ai reçu un appel. Du spam. J'ai quand même ressenti quelque chose en voyant l'écran s'allumer.",
+        summary: "Seul après avoir perdu son emploi. Les journées semblent sans forme.",
+      },
+    },
   },
   {
     id: "sana",
@@ -133,6 +203,20 @@ export const characters: Character[] = [
     emotionalStatus: "Searching",
     tags: ["burnout", "purpose", "self-esteem"],
     location: "Singapore",
+    translations: {
+      es: {
+        intro: "Me dieron el ascenso. Me quedé sentada en el coche frente a la oficina esperando sentir algo.",
+        summary: "Agotamiento silencioso bajo una vida impecable.",
+      },
+      it: {
+        intro: "Ho ottenuto la promozione. Sono rimasta seduta in macchina davanti all'ufficio ad aspettare di sentire qualcosa.",
+        summary: "Burnout silenzioso sotto una vita impeccabile.",
+      },
+      fr: {
+        intro: "J'ai eu la promotion. Je me suis assise dans ma voiture devant le bureau à attendre de ressentir quelque chose.",
+        summary: "Burnout silencieux sous une vie impeccable.",
+      },
+    },
   },
   {
     id: "marcus",
@@ -148,6 +232,20 @@ export const characters: Character[] = [
     emotionalStatus: "Hopeful",
     tags: ["family", "estrangement", "regret"],
     location: "Atlanta, US",
+    translations: {
+      es: {
+        intro: "Escribí el mensaje nueve veces. Aún no lo he enviado.",
+        summary: "Distanciado de su familia. Quiere volver a conectar, suavemente.",
+      },
+      it: {
+        intro: "Ho scritto il messaggio nove volte. Non l'ho ancora inviato.",
+        summary: "Distante dalla famiglia. Vuole riavvicinarsi, delicatamente.",
+      },
+      fr: {
+        intro: "J'ai écrit le message neuf fois. Je ne l'ai toujours pas envoyé.",
+        summary: "Éloigné de sa famille. Il veut se rapprocher, doucement.",
+      },
+    },
   },
   {
     id: "elena",
@@ -163,6 +261,20 @@ export const characters: Character[] = [
     emotionalStatus: "Tender",
     tags: ["identity", "family", "courage"],
     location: "Mexico City, MX",
+    translations: {
+      es: {
+        intro: "Llevo tanto tiempo cargando con esto que olvidé cómo se sentía no hacerlo.",
+        summary: "Cargando una verdad que aún no ha compartido.",
+      },
+      it: {
+        intro: "Porto questa cosa da così tanto tempo che ho dimenticato come ci si sentiva senza.",
+        summary: "Porta una verità che non ha ancora condiviso.",
+      },
+      fr: {
+        intro: "Je porte ça depuis si longtemps que j'ai oublié ce que c'était de ne pas le porter.",
+        summary: "Elle porte une vérité qu'elle n'a pas encore partagée.",
+      },
+    },
   },
   {
     id: "tomas",
@@ -183,6 +295,20 @@ export const characters: Character[] = [
       memory: "The moment he had to call each of his five employees individually to let them go. One of them cried on the phone. He stayed calm until he got to his car, then sat in the parking lot for an hour and couldn't drive.",
       reactions: "Gets very still when pushed. Deflects with logic and analysis — turns emotions into problems to solve. If you press too hard, he changes the subject entirely. Gets cold, not angry. Takes a long time to trust someone enough to show the real fear underneath.",
       background: "His father ran the same hardware shop for 30 years without missing a day. Tomás grew up believing that men in his family don't fail — they endure. He was the first to start a company, and secretly the first to break that rule.",
+    },
+    translations: {
+      es: {
+        intro: "Sigo vistiéndome cada mañana a la misma hora. Es lo único que todavía se siente normal.",
+        summary: "Perdió su negocio después de 8 años. Ocultándolo. Cuestionando todo lo que creía de sí mismo.",
+      },
+      it: {
+        intro: "Mi vesto ancora ogni mattina alla stessa ora. È l'unica cosa che sembra ancora normale.",
+        summary: "Ha perso la sua azienda dopo 8 anni. Lo nasconde. Mette in discussione tutto ciò in cui credeva di sé.",
+      },
+      fr: {
+        intro: "Je m'habille encore chaque matin à la même heure. C'est la seule chose qui semble encore normale.",
+        summary: "A perdu son entreprise après 8 ans. Il le cache. Il remet en question tout ce qu'il croyait de lui-même.",
+      },
     },
   },
   {
@@ -205,6 +331,20 @@ export const characters: Character[] = [
       reactions: "When someone asks how he's really doing, he says 'managing, thank you.' Needs time — sometimes a long time — before he can say anything true. If someone listens without immediately offering solutions or silver linings, something visibly shifts in him. Rarely cries in front of others, but occasionally something slips.",
       background: "32 years in the British Army, then 10 in the civil service. Raised in a Yorkshire household where feelings were considered private matters. 'Getting on with it' was the only model he was ever given for grief or hardship.",
     },
+    translations: {
+      es: {
+        intro: "Sus gafas de lectura siguen en la mesita de noche donde las dejó. No puedo moverlas.",
+        summary: "Viudo después de 40 años. Manteniéndose entero para los demás mientras se desmorona por dentro.",
+      },
+      it: {
+        intro: "I suoi occhiali da lettura sono ancora sul comodino dove li ha lasciati. Non riesco a spostarli.",
+        summary: "Vedovo dopo 40 anni. Reggendo tutto per gli altri mentre si sgretola in silenzio.",
+      },
+      fr: {
+        intro: "Ses lunettes de lecture sont encore sur la table de nuit où elle les a laissées. Je ne peux pas les bouger.",
+        summary: "Veuf après 40 ans. Il fait face pour tout le monde tout en s'effondrant en silence.",
+      },
+    },
   },
   {
     id: "sofia",
@@ -226,6 +366,20 @@ export const characters: Character[] = [
       reactions: "Immediately minimizes her feelings if she senses the other person is uncomfortable — says 'I know it's stupid' or 'sorry, forget I said that.' But if someone holds space without fixing, redirecting, or reassuring too quickly, she opens completely and goes much deeper than you'd expect.",
       background: "Grew up in Milan in a large, loud Italian family where someone was always home, always in the kitchen, always present. Silence in the flat still feels like something is wrong — like a sign, not just an absence.",
     },
+    translations: {
+      es: {
+        intro: "El sábado fui a una cafetería solo para estar rodeada de gente. No hablé con nadie.",
+        summary: "Viviendo sola en una ciudad nueva. La soledad escondida detrás de una decisión que todos llaman valiente.",
+      },
+      it: {
+        intro: "Sabato sono andata in un caffè solo per stare in mezzo alla gente. Non ho parlato con nessuno.",
+        summary: "Vive da sola in una nuova città. La solitudine nascosta dietro una scelta che tutti chiamano coraggiosa.",
+      },
+      fr: {
+        intro: "Samedi je suis allée dans un café juste pour être entourée de gens. Je n'ai parlé à personne.",
+        summary: "Seule dans une nouvelle ville. La solitude cachée derrière une décision que tout le monde appelle courageuse.",
+      },
+    },
   },
   {
     id: "christine",
@@ -246,6 +400,20 @@ export const characters: Character[] = [
       memory: "The morning after her daughter left. She made two cups of coffee out of 20 years of habit. Stood at the kitchen table for a long time, holding both. Eventually poured the second one down the drain and didn't understand why that was the thing that broke her.",
       reactions: "Intellectualizes as a defense — if she stays in analysis, she doesn't have to actually feel it. The shift happens when someone gently interrupts the explanation and asks about the feeling underneath it. She needs permission to not be okay; she won't give it to herself.",
       background: "Left a career in marketing when her first child was born. Made the choice freely and has never regretted it. But she quietly put herself last for 20 years, and now that the job is done, she doesn't know how to be a person who comes first.",
+    },
+    translations: {
+      es: {
+        intro: "Esta mañana preparé dos tazas de café. Por inercia. Ella se fue hace un mes.",
+        summary: "El nido vacío después de 20 años siendo madre. Perdida sin el rol que le daba sentido a todo.",
+      },
+      it: {
+        intro: "Stamattina ho preparato due tazze di caffè. Per abitudine. Se n'è andata un mese fa.",
+        summary: "Il nido vuoto dopo 20 anni da madre. Persa senza il ruolo che dava senso a tutto.",
+      },
+      fr: {
+        intro: "Ce matin j'ai préparé deux tasses de café. Par habitude. Elle est partie il y a un mois.",
+        summary: "Le nid vide après 20 ans en tant que mère. Perdue sans le rôle qui donnait un sens à tout.",
+      },
     },
   },
 ];

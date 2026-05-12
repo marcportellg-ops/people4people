@@ -9,7 +9,7 @@ import { LANGUAGE_LABELS, type Language } from "@/lib/translations";
 import { getMyCharacters, getUnseenDeliveryCount } from "@/lib/db";
 import { signOutUser } from "@/lib/auth";
 
-const LANGS: Language[] = ["en", "es", "it", "fr", "de", "pt", "ca"];
+const LANGS: Language[] = ["en", "es", "it", "fr"];
 
 export const TopNav = () => {
   const [open, setOpen] = useState(false);

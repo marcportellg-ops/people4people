@@ -520,7 +520,7 @@ const Profile = () => {
                     <div>
                       <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">{t("profile.language")}</p>
                       <div className="flex gap-2">
-                        {(["en", "es", "it", "fr", "de", "pt", "ca"] as Language[]).map((l) => (
+                        {(["en", "es", "it", "fr"] as Language[]).map((l) => (
                           <button key={l} onClick={() => setLang(l)} className={`rounded-full px-4 py-2 text-sm font-medium border transition ${lang === l ? "bg-gradient-amber text-primary-foreground border-transparent shadow-glow" : "border-border/60 text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
                             {LANGUAGE_LABELS[l]}
                           </button>

@@ -122,9 +122,9 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
                   transition={{ delay: 0.08 }}
                   className="border-l-2 border-primary/30 pl-3"
                 >
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Their opening</p>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">{t("gallery.theirOpening")}</p>
                   <p className="text-xs text-foreground/90 italic leading-relaxed line-clamp-2">
-                    "{character.intro}"
+                    "{(lang !== "en" && character.translations?.[lang as "es"|"it"|"fr"]?.intro) || character.intro}"
                   </p>
                 </motion.div>
 
@@ -153,7 +153,7 @@ export const CharacterCard = ({ character, index = 0 }: { character: Character; 
                     ))}
                   </div>
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                    Talk <ArrowUpRight className="h-3 w-3" />
+                    {t("gallery.discovery.talk")} <ArrowUpRight className="h-3 w-3" />
                   </span>
                 </motion.div>
               </div>

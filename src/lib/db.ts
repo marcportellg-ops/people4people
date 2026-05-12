@@ -263,6 +263,7 @@ export type UserDoc = {
   onboarded?: boolean;
   onboardingCompleted?: boolean;
   onboardingCompletedAt?: Timestamp;
+  noaCompleted?: boolean;
   language?: string;
 };
 
@@ -277,7 +278,8 @@ export async function ensureUserDoc(uid: string): Promise<void> {
 export async function checkIsOnboarded(uid: string): Promise<boolean> {
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return false;
-  return (snap.data() as UserDoc).onboarded === true;
+  const d = snap.data() as UserDoc;
+  return (d.onboardingCompleted === true) || (d.onboarded === true);
 }
 
 export async function markOnboarded(uid: string): Promise<void> {
@@ -290,6 +292,10 @@ export async function markOnboarded(uid: string): Promise<void> {
 
 export async function setUserLanguage(uid: string, language: string): Promise<void> {
   await setDoc(doc(db, "users", uid), { language }, { merge: true });
+}
+
+export async function markNoaCompleted(uid: string): Promise<void> {
+  await setDoc(doc(db, "users", uid), { noaCompleted: true }, { merge: true });
 }
 
 export async function getUserPlan(uid: string): Promise<Plan> {
