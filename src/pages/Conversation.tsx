@@ -16,15 +16,19 @@ import {
   rebuildWeeklyRanking, getHelperConversations, saveEmotionTags, markNoaCompleted,
 } from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
-import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio } from "@/lib/voice";
+import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio, locationToLang } from "@/lib/voice";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlan } from "@/context/PlanContext";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { TrophyNotification } from "@/components/TrophyNotification";
+import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
 import { evaluateTrophies } from "@/lib/trophies";
 import { calculateLevel } from "@/lib/levels";
 import { IMPACT_TROPHY_IDS } from "@/lib/trophies";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { app } from "@/lib/firebase";
+import { getPushPermission } from "@/lib/push";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Msg = { role: "char" | "user"; text: string; t: string };
@@ -106,6 +110,9 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     demoCharacter ?? (id ? getCharacter(id) : undefined),
   );
 
+  // Derive voice language from character's country; fallback to UI lang
+  const charLang = character ? locationToLang(character.location) : lang;
+
   // ── Phase navigation ──────────────────────────────────────────────────────
   const [phase, setPhase] = useState<"narrator" | "conversation">("narrator");
   const [cinemaPhase, setCinemaPhase] = useState<CinemaPhase>("entrada");
@@ -157,6 +164,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const [musicMuted, setMusicMuted] = useState(false);
   const [pendingTrophies, setPendingTrophies] = useState<string[]>([]);
   const [activeTrophy, setActiveTrophy] = useState<string | null>(null);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Msg[]>([]);
@@ -356,7 +364,19 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
           const existingIds = new Set(existingTrophies.map((t) => t.id));
           const completedConv = { helperId: user.uid, characterId: character.id, endedAt: { toMillis: () => Date.now() } as any, startedAt: null, messages: messagesRef.current, id: conversationId, moderation: m, seenByCreator: false };
           const newIds = evaluateTrophies({ allConvs: [...allConvs, completedConv], newConv: completedConv, newScore: m.score, characterLocation: character.location, fullSession, existingTrophyIds: existingIds });
-          if (newIds.length > 0) { await awardTrophies(user.uid, newIds); setPendingTrophies(newIds); }
+          if (newIds.length > 0) {
+            await awardTrophies(user.uid, newIds);
+            setPendingTrophies(newIds);
+            // Notify via push for first trophy in the batch
+            if (getPushPermission() === "granted") {
+              const { TROPHY_DEFS } = await import("@/lib/trophies");
+              const firstName = (TROPHY_DEFS as any)[newIds[0]]?.name ?? "";
+              if (firstName) {
+                const fns = getFunctions(app);
+                httpsCallable(fns, "notifyHelperTrophy")({ helperId: user.uid, trophyName: firstName }).catch(() => {});
+              }
+            }
+          }
           const allCompleted = [...allConvs, completedConv];
           const quality = allCompleted.filter((c) => (c.moderation?.score ?? 0) >= 7).length;
           const updatedTrophies = [...existingTrophies, ...newIds.map((id) => ({ id } as any))];
@@ -384,6 +404,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
             characterName: character.name,
             gender: character.gender,
             emotionalStatus: character.emotionalStatus,
+            lang: charLang,
             onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
           });
         })
@@ -408,6 +429,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
         characterName: character?.name,
         gender: character?.gender,
         emotionalStatus: character?.emotionalStatus,
+        lang: charLang,
         onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
       });
       setCinemaPhase("conversacion");
@@ -533,6 +555,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
         characterName: character.name,
         gender: character.gender,
         emotionalStatus: character.emotionalStatus,
+        lang: charLang,
         onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
       });
       if (crisisLevel !== "high") {
@@ -557,7 +580,12 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     if (conversationId && tags.length > 0) {
       await saveEmotionTags(conversationId, tags, character?.id ?? "").catch(() => {});
     }
-    navigate(user ? "/profile" : "/gallery");
+    // Show push permission prompt if not yet granted and user is logged in
+    if (user && getPushPermission() === "default") {
+      setShowPushPrompt(true);
+    } else {
+      navigate(user ? "/profile" : "/gallery");
+    }
   };
 
   // ── Early returns ──────────────────────────────────────────────────────────
@@ -1184,6 +1212,14 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
       </AnimatePresence>
 
       <TrophyNotification trophyId={activeTrophy} onDismiss={() => setActiveTrophy(null)} />
+
+      {showPushPrompt && user && (
+        <PushPermissionPrompt
+          uid={user.uid}
+          role="helper"
+          onDone={() => { setShowPushPrompt(false); navigate(user ? "/profile" : "/gallery"); }}
+        />
+      )}
     </div>
   );
 };

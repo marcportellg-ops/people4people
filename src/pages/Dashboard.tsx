@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles, Users, Heart, Zap } from "lucide-react";
+import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles, Users, Heart, Zap, FlaskConical } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { TrustStrip, TrustBadge } from "@/components/Trust";
 import { useAuth } from "@/context/AuthContext";
 import { getMyCharacters, getConversationsForCharacters, getAllConversations, getAllUserCharacters, saveCharacterInsights, getCharacterInsights, getAllHelpers, setUserLevel, awardImpactTrophy, type ConversationDoc, type ModerationResult, type CharacterInsights, type UserDoc } from "@/lib/db";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { app } from "@/lib/firebase";
 import { synthesizeCharacterInsights } from "@/lib/claude";
 import { characters as hardcodedCharacters, type Character } from "@/data/characters";
 import { LEVEL_META, type Level } from "@/lib/levels";
@@ -61,6 +63,9 @@ const Dashboard = () => {
   const markImpact = async (convId: string, trophyId: "algo_cambio" | "punto_de_giro") => {
     setImpactPending((p) => ({ ...p, [`${convId}_${trophyId}`]: true }));
     await awardImpactTrophy(convId, trophyId);
+    // Notify the helper via push
+    const fns = getFunctions(app);
+    httpsCallable(fns, "notifyHelperOnImpact")({ conversationId: convId, trophyId }).catch(() => {});
     setImpactPending((p) => ({ ...p, [`${convId}_${trophyId}`]: false }));
   };
 
@@ -122,6 +127,24 @@ const Dashboard = () => {
             + Create another
           </Link>
         </motion.div>
+
+        {/* Moderator quick action — Noa test */}
+        {isModerator && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex items-center gap-3"
+          >
+            <Link
+              to="/demo"
+              className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface px-4 py-2 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              Probar conversación con NOA
+            </Link>
+          </motion.div>
+        )}
 
         {/* Stats */}
         <div className={`grid gap-3 ${isModerator ? "grid-cols-2 md:grid-cols-4 lg:grid-cols-6" : "grid-cols-2 md:grid-cols-4"}`}>

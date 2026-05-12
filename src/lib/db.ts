@@ -502,6 +502,26 @@ export async function markHelperMessageRead(conversationId: string): Promise<voi
   await updateDoc(doc(db, "helperMessages", conversationId), { read: true });
 }
 
+// ── Push subscriptions ────────────────────────────────────────────────────────
+
+export type PushSubscriptionJSON = {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+};
+
+export async function savePushSubscription(
+  uid: string,
+  subscription: PushSubscriptionJSON,
+): Promise<void> {
+  await setDoc(doc(db, "users", uid), { pushSubscription: subscription }, { merge: true });
+}
+
+export async function getPushSubscription(uid: string): Promise<PushSubscriptionJSON | null> {
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists()) return null;
+  return (snap.data() as any).pushSubscription ?? null;
+}
+
 // ── Emotion tags ──────────────────────────────────────────────────────────────
 
 export async function recomputeCharacterTopTags(characterId: string): Promise<void> {
