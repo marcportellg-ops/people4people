@@ -1,6 +1,6 @@
 import {
   collection, addDoc, getDocs, getDoc, doc, setDoc,
-  updateDoc, arrayUnion, serverTimestamp,
+  updateDoc, arrayUnion, serverTimestamp, deleteField,
   query, where, type Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -83,10 +83,13 @@ export async function updateCharacter(
     summary: updates.summary,
     longStory: updates.longStory,
     intro: updates.intro,
+    translations: deleteField(), // clear stale translations so they get re-generated
+    lastEditedAt: serverTimestamp(),
   };
   if (updates.refinements !== undefined) data.refinements = updates.refinements;
   if (updates.narratorStory !== undefined) data.narratorStory = updates.narratorStory;
   await updateDoc(doc(db, "characters", id), data);
+  invalidateUserOpeningsForCharacter(id).catch(() => {});
 }
 
 export async function getAllUserCharacters(): Promise<Character[]> {
@@ -445,11 +448,24 @@ export async function getHelperConversations(helperId: string): Promise<Conversa
 export async function getUserOpening(userId: string, characterId: string, lang: string): Promise<string | null> {
   const snap = await getDoc(doc(db, "userOpenings", `${userId}_${characterId}_${lang}`));
   if (!snap.exists()) return null;
-  return (snap.data() as { opening: string }).opening;
+  const data = snap.data() as { opening: string; invalidated?: boolean };
+  if (data.invalidated) return null;
+  return data.opening;
 }
 
 export async function saveUserOpening(userId: string, characterId: string, lang: string, opening: string): Promise<void> {
-  await setDoc(doc(db, "userOpenings", `${userId}_${characterId}_${lang}`), { opening });
+  await setDoc(doc(db, "userOpenings", `${userId}_${characterId}_${lang}`), {
+    opening,
+    characterId,
+    savedAt: serverTimestamp(),
+    invalidated: false,
+  });
+}
+
+export async function invalidateUserOpeningsForCharacter(characterId: string): Promise<void> {
+  const q = query(collection(db, "userOpenings"), where("characterId", "==", characterId));
+  const snap = await getDocs(q);
+  await Promise.all(snap.docs.map((d) => updateDoc(d.ref, { invalidated: true })));
 }
 
 export async function markDeliveriesSeen(conversationIds: string[]): Promise<void> {

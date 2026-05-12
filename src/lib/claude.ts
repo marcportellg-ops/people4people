@@ -52,7 +52,7 @@ export async function generateAliases(lang = "es"): Promise<string[]> {
 }
 
 export async function generateDynamicOpening(
-  character: { name: string; age: number; location: string; longStory: string; emotionalStatus: string; tags: string[] },
+  character: { name: string; age: number; location: string; longStory: string; emotionalStatus: string; tags: string[]; narratorStory?: string },
   lang?: string,
 ): Promise<string> {
   const langName = lang ? LANG_NAMES[lang] ?? "English" : "English";
@@ -65,6 +65,7 @@ export async function generateDynamicOpening(
 
 Their situation: ${character.longStory}
 Emotional state: ${character.emotionalStatus}
+${character.narratorStory ? `Narrator context (for consistency): ${character.narratorStory}` : ""}
 
 Rules:
 - First person, present-tense feel
@@ -538,6 +539,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 export async function conductCharacterEdit(
   character: Character,
   conversationHistory: { role: "user" | "assistant"; content: string }[],
+  lang?: string,
 ): Promise<
   | { type: "message"; text: string }
   | { type: "proposal"; text: string; changes: Partial<{ summary: string; longStory: string; intro: string; narratorStory: string; refinements: Character["refinements"] }> }
@@ -554,11 +556,15 @@ ${character.refinements ? `- Tone: ${character.refinements.tone}
 - Reactions: ${character.refinements.reactions}
 - Background: ${character.refinements.background}` : "- No refinements yet"}`;
 
+  const langName = lang ? LANG_NAMES[lang] ?? "English" : "English";
+
   const systemPrompt = `You are a warm, thoughtful editor helping someone refine a character they've created on People4People — an empathy platform where AI characters based on real stories are talked to by volunteer helpers.
 
 ${currentState}
 
 Your job is to chat naturally with the creator to understand what they want to change. Ask clarifying questions if needed. When you have a clear picture of the changes they want, propose them.
+
+IMPORTANT: Always respond in ${langName}. The creator may write in any language, but you always reply in ${langName}.
 
 To propose changes, respond with ONLY this JSON (no explanation, no markdown):
 {

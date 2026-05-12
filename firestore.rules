@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Characters are publicly readable (gallery is public)
+    match /characters/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Character stats publicly readable (emotion tags shown in gallery)
+    match /characterStats/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Weekly ranking publicly readable
+    match /weeklyRanking/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Discovery data: conversations are needed for trending/lonely modes
+    match /conversations/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == resource.data.helperId;
+      allow update: if request.auth != null;
+    }
+
+    // User profiles: only the owner can read/write
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Trophies: only the owner can read/write
+    match /trophies/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Character insights publicly readable
+    match /characterInsights/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Helper messages: only the helper can read their own
+    match /helperMessages/{id} {
+      allow read, write: if request.auth != null;
+    }
+
+    // User openings: owner only
+    match /userOpenings/{id} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

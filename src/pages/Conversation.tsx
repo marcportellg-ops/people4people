@@ -409,7 +409,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
             characterName: character.name,
             gender: character.gender,
             emotionalStatus: character.emotionalStatus,
-            lang: charLang,
+            lang,
             onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
           });
         })
@@ -435,7 +435,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
         characterName: character?.name,
         gender: character?.gender,
         emotionalStatus: character?.emotionalStatus,
-        lang: charLang,
+        lang,
         onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
       });
       setCinemaPhase("conversacion");
@@ -560,7 +560,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
         characterName: character.name,
         gender: character.gender,
         emotionalStatus: character.emotionalStatus,
-        lang: charLang,
+        lang,
         onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
       });
       if (crisisLevel !== "high") {
@@ -1228,7 +1228,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
       <AnimatePresence>
         {showLoginModal && character && (
           <LoginModal
-            message={`Para hablar con ${character.name} necesitas una cuenta. Es gratis y anónimo.`}
+            message={t("conversation.loginToTalk", { name: character.name })}
             onDismiss={() => setShowLoginModal(false)}
           />
         )}
