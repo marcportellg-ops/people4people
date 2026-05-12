@@ -7,11 +7,18 @@ import * as webpush from "web-push";
 admin.initializeApp();
 const db = admin.firestore();
 
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? "";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:marcportellg@gmail.com";
+const VAPID_SUBJECT = "mailto:marcportellg@gmail.com";
 
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+let webpushReady = false;
+function initWebPush(): boolean {
+  if (webpushReady) return true;
+  const pub = process.env.VAPID_PUBLIC_KEY ?? "";
+  const priv = process.env.VAPID_PRIVATE_KEY ?? "";
+  if (!pub || !priv) return false;
+  webpush.setVapidDetails(VAPID_SUBJECT, pub, priv);
+  webpushReady = true;
+  return true;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +40,7 @@ async function getUserSubscription(uid: string): Promise<webpush.PushSubscriptio
 }
 
 async function sendPush(uid: string, payload: PushPayload): Promise<void> {
+  if (!initWebPush()) return;
   const sub = await getUserSubscription(uid);
   if (!sub) return;
   try {

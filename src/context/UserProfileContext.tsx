@@ -7,7 +7,6 @@ import { type Level, calculateLevel, LEVEL_META } from "@/lib/levels";
 import { type Trophy, IMPACT_TROPHY_IDS } from "@/lib/trophies";
 
 const ONBOARDED_KEY = (uid: string) => `p4p_onboarded_${uid}`;
-const NOA_KEY       = (uid: string) => `p4p_noa_${uid}`;
 
 type UserProfileContextType = {
   alias: string | null;
@@ -19,21 +18,19 @@ type UserProfileContextType = {
   avgScore: number;
   qualitySessions: number;
   onboarded: boolean;
-  noaCompleted: boolean;
   loading: boolean;
   aliasLoaded: boolean;
   preferredLang: string | null;
   refetch: () => void;
   setAlias: (alias: string) => Promise<void>;
   setOnboardedTrue: () => void;
-  setNoaCompletedTrue: () => void;
 };
 
 const UserProfileContext = createContext<UserProfileContextType>({
   alias: null, level: "Semilla", levelEmoji: "🌱", isStar: false,
   trophies: [], streak: 0, avgScore: 0, qualitySessions: 0,
-  onboarded: false, noaCompleted: false, loading: true, aliasLoaded: false, preferredLang: null,
-  refetch: () => {}, setAlias: async () => {}, setOnboardedTrue: () => {}, setNoaCompletedTrue: () => {},
+  onboarded: false, loading: true, aliasLoaded: false, preferredLang: null,
+  refetch: () => {}, setAlias: async () => {}, setOnboardedTrue: () => {},
 });
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
@@ -51,7 +48,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   const [internalLoading, setInternalLoading] = useState(true);
   const [aliasLoaded, setAliasLoaded] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
-  const [noaCompleted, setNoaCompleted] = useState(false);
   const [preferredLang, setPreferredLang] = useState<string | null>(null);
   // undefined = never loaded; null = loaded for signed-out state; string = loaded for that uid
   const [loadedForUid, setLoadedForUid] = useState<string | null | undefined>(undefined);
@@ -68,12 +64,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     if (!user) { setInternalLoading(false); setAliasLoaded(true); setLoadedForUid(null); return; }
     setInternalLoading(true);
 
-    // Check localStorage caches immediately — avoids redirect flashes when
-    // Firestore is slow or a secondary read fails (see Promise.allSettled below).
-    const localOnboarded    = localStorage.getItem(ONBOARDED_KEY(user.uid)) === "true";
-    const localNoaCompleted = localStorage.getItem(NOA_KEY(user.uid))       === "true";
-    if (localOnboarded)    setOnboarded(true);
-    if (localNoaCompleted) setNoaCompleted(true);
+    const localOnboarded = localStorage.getItem(ONBOARDED_KEY(user.uid)) === "true";
+    if (localOnboarded) setOnboarded(true);
 
     try {
       // Use allSettled so that a failure in any single read (trophies, convs…)
@@ -101,14 +93,9 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       setStreak(userDoc.currentStreak ?? 0);
       setPreferredLang(userDoc.language ?? null);
 
-      const firestoreOnboarded    = (userDoc.onboardingCompleted === true) || (userDoc.onboarded === true);
-      const firestoreNoaCompleted = userDoc.noaCompleted === true;
-      // Persist to localStorage whenever Firestore confirms, so future loads
-      // succeed even if Firestore is slow or fails.
-      if (firestoreOnboarded)    localStorage.setItem(ONBOARDED_KEY(user.uid), "true");
-      if (firestoreNoaCompleted) localStorage.setItem(NOA_KEY(user.uid), "true");
+      const firestoreOnboarded = (userDoc.onboardingCompleted === true) || (userDoc.onboarded === true);
+      if (firestoreOnboarded) localStorage.setItem(ONBOARDED_KEY(user.uid), "true");
       setOnboarded(firestoreOnboarded || localOnboarded);
-      setNoaCompleted(firestoreNoaCompleted || localNoaCompleted);
 
       const scored  = convs.filter((c) => c.moderation?.score != null);
       const avg     = scored.length ? scored.reduce((s, c) => s + c.moderation!.score, 0) / scored.length : 0;
@@ -136,14 +123,10 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     <UserProfileContext.Provider value={{
       alias, level, levelEmoji: LEVEL_META[level].emoji, isStar,
       trophies, streak, avgScore, qualitySessions,
-      onboarded, noaCompleted, loading, aliasLoaded, preferredLang, refetch: load, setAlias,
+      onboarded, loading, aliasLoaded, preferredLang, refetch: load, setAlias,
       setOnboardedTrue: () => {
         setOnboarded(true);
         if (user) localStorage.setItem(ONBOARDED_KEY(user.uid), "true");
-      },
-      setNoaCompletedTrue: () => {
-        setNoaCompleted(true);
-        if (user) localStorage.setItem(NOA_KEY(user.uid), "true");
       },
     }}>
       {children}

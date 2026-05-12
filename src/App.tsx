@@ -22,14 +22,11 @@ import Dashboard from "./pages/Dashboard.tsx";
 import Subscribe from "./pages/Subscribe.tsx";
 import Profile from "./pages/Profile.tsx";
 import EditCharacter from "./pages/EditCharacter.tsx";
-import Welcome from "./pages/Welcome.tsx";
 import DemoConversation from "./pages/DemoConversation.tsx";
 
 const queryClient = new QueryClient();
 
 // Applies the Firestore-persisted language preference on first load.
-// Runs once after UserProfile finishes loading — covers cross-device scenarios
-// where localStorage has a stale or missing language.
 function LangSync() {
   const { preferredLang, loading } = useUserProfile();
   const { setLang } = useLanguage();
@@ -44,27 +41,10 @@ function LangSync() {
   return null;
 }
 
-const ONBOARDING_GATE_BYPASS = ["/welcome", "/demo"]; // don't redirect away from these
-const ALIAS_GATE_BYPASS = ["/demo"]; // alias not required here
+// Shows AliasSelector overlay for logged-in users who haven't chosen an alias yet.
+// Skipped for moderators and the /demo route.
+const ALIAS_GATE_BYPASS = ["/demo"];
 
-// Redirects users through the onboarding funnel:
-//   !onboarded            → /welcome  (alias + language choice)
-//   onboarded && !noa     → /demo     (Noa conversation, skipping alias step)
-//   onboarded && noa done → no redirect
-function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { user, isModerator, loading: authLoading } = useAuth();
-  const { onboarded, noaCompleted, loading: profileLoading } = useUserProfile();
-  const location = useLocation();
-
-  if (authLoading || profileLoading) return <>{children}</>;
-  if (!user || isModerator) return <>{children}</>;
-  if (ONBOARDING_GATE_BYPASS.includes(location.pathname)) return <>{children}</>;
-  if (!onboarded) return <Navigate to="/welcome" replace />;
-  if (!noaCompleted) return <Navigate to="/demo" replace />;
-  return <>{children}</>;
-}
-
-// Gate: show AliasSelector for logged-in users who haven't chosen an alias yet
 function AliasGate({ children }: { children: React.ReactNode }) {
   const { user, isModerator } = useAuth();
   const { alias, aliasLoaded } = useUserProfile();
@@ -85,24 +65,30 @@ const App = () => (
           <UserProfileProvider>
           <LangSync />
           <PlanProvider>
-          <OnboardingGate>
           <AliasGate>
           <Routes>
+            {/* Public routes — no auth required */}
+            <Route path="/" element={<Index />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/talk/:id" element={<Conversation />} />
+            <Route path="/create" element={<Create />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/gallery" element={<ProtectedRoute><Gallery /></ProtectedRoute>} />
-            <Route path="/talk/:id" element={<ProtectedRoute><Conversation /></ProtectedRoute>} />
-            <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
+
+            {/* Auth-required routes */}
             <Route path="/subscribe" element={<ProtectedRoute><Subscribe /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/edit/:id" element={<ProtectedRoute><EditCharacter /></ProtectedRoute>} />
-            <Route path="/welcome" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
             <Route path="/demo" element={<ProtectedRoute><DemoConversation /></ProtectedRoute>} />
+
+            {/* Moderator only */}
             <Route path="/dashboard" element={<ModeratorRoute><Dashboard /></ModeratorRoute>} />
+
+            {/* Legacy redirects */}
+            <Route path="/welcome" element={<Navigate to="/" replace />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
           </AliasGate>
-          </OnboardingGate>
           </PlanProvider>
           </UserProfileProvider>
           </LanguageProvider>

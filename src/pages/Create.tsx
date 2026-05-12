@@ -12,6 +12,7 @@ import { isSpeechSupported, startRecognition, fetchNarratorAudio, speakText, sto
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlan } from "@/context/PlanContext";
+import { LoginModal } from "@/components/LoginModal";
 
 type Step = 0 | 1 | 2 | 3;
 
@@ -357,6 +358,17 @@ const Create = () => {
       setPublishing(false);
     }
   };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <LoginModal
+          message="Para compartir tu historia necesitas una cuenta. Es gratis y anónimo."
+          onDismiss={() => window.history.back()}
+        />
+      </div>
+    );
+  }
 
   if (narratorPreview && narratorStory && selectedPortrait) {
     return (

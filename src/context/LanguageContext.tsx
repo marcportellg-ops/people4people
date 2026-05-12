@@ -19,9 +19,15 @@ const LanguageContext = createContext<LanguageContextType>({
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
 
-  const [lang, setLangState] = useState<Language>(
-    () => (localStorage.getItem("p4p_lang") as Language) ?? "en",
-  );
+  const [lang, setLangState] = useState<Language>(() => {
+    const stored = localStorage.getItem("p4p_lang") as Language | null;
+    if (stored) return stored;
+    const nav = navigator.language.toLowerCase();
+    if (nav.startsWith("es")) return "es";
+    if (nav.startsWith("fr")) return "fr";
+    if (nav.startsWith("it")) return "it";
+    return "en";
+  });
 
   const setLang = (l: Language) => {
     setLangState(l);

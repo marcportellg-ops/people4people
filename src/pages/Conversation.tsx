@@ -13,7 +13,7 @@ import {
   saveConversationSummary, saveConversationModeration, saveNarratorStory,
   saveCharacterTranslations, getPausedConversation, pauseConversation, discardPausedConversation,
   getUserTrophies, awardTrophies, setUserLevel, updateStreak,
-  rebuildWeeklyRanking, getHelperConversations, saveEmotionTags, markNoaCompleted,
+  rebuildWeeklyRanking, getHelperConversations, saveEmotionTags,
 } from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio, locationToLang } from "@/lib/voice";
@@ -23,6 +23,7 @@ import { usePlan } from "@/context/PlanContext";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { TrophyNotification } from "@/components/TrophyNotification";
 import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
+import { LoginModal } from "@/components/LoginModal";
 import { evaluateTrophies } from "@/lib/trophies";
 import { calculateLevel } from "@/lib/levels";
 import { IMPACT_TROPHY_IDS } from "@/lib/trophies";
@@ -101,9 +102,9 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const { user } = useAuth();
   const { t, lang } = useLanguage();
   const { canConverse, refetch: refetchPlan } = usePlan();
-  const { refetch: refetchProfile, setNoaCompletedTrue } = useUserProfile();
+  const { refetch: refetchProfile } = useUserProfile();
   const navigate = useNavigate();
-  const isDemo = !!demoCharacter;
+  const isDemo = !!demoCharacter || id === "__intro__";
 
   // ── Character ─────────────────────────────────────────────────────────────
   const [character, setCharacter] = useState<Character | undefined>(
@@ -165,6 +166,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const [pendingTrophies, setPendingTrophies] = useState<string[]>([]);
   const [activeTrophy, setActiveTrophy] = useState<string | null>(null);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Msg[]>([]);
@@ -174,6 +176,9 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const timeLeftRef = useRef(isDemo ? 3 * 60 : 15 * 60);
   const resumeCheckedRef = useRef(false);
   const skipSaveRef = useRef(false);
+
+  // ── Auto-dismiss login modal on sign-in ───────────────────────────────────
+  useEffect(() => { if (user && showLoginModal) setShowLoginModal(false); }, [user]);
 
   // ── Ref sync ──────────────────────────────────────────────────────────────
   useEffect(() => { endedRef.current = ended; }, [ended]);
@@ -418,6 +423,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   };
 
   const handleEnterConversacion = () => {
+    if (!user && !isDemo) { setShowLoginModal(true); return; }
     if (entradaExiting) return;
     setEntradaExiting(true);
     setTimeout(() => {
@@ -476,7 +482,6 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
 
   const handleExitConfirm = () => {
     if (isDemo) {
-      if (user) { markNoaCompleted(user.uid).catch(() => {}); setNoaCompletedTrue(); }
       navigate("/gallery");
       return;
     }
@@ -572,7 +577,6 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
 
   const handleCierreDone = async (tags: string[]) => {
     if (isDemo) {
-      if (user) { markNoaCompleted(user.uid).catch(() => {}); setNoaCompletedTrue(); }
       navigate("/gallery");
       return;
     }
@@ -1220,6 +1224,15 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
           onDone={() => { setShowPushPrompt(false); navigate(user ? "/profile" : "/gallery"); }}
         />
       )}
+
+      <AnimatePresence>
+        {showLoginModal && character && (
+          <LoginModal
+            message={`Para hablar con ${character.name} necesitas una cuenta. Es gratis y anónimo.`}
+            onDismiss={() => setShowLoginModal(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

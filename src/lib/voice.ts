@@ -7,21 +7,56 @@ declare global {
   }
 }
 
-// ── ElevenLabs voices ─────────────────────────────────────────────────────────
-const EL_VOICE_FEMALE    = "EXAVITQu4vr4xnSDxMaL"; // Bella — soft, warm, emotional
-const EL_VOICE_MALE      = "ErXwobaYiN019PkySvjV"; // Antoni — warm, clear, natural
-const EL_NARRATOR_VOICE  = "21m00Tcm4TlvDq8ikWAM"; // Rachel — calm, cinematic narrator
+// ── ElevenLabs voices — indexed by language ───────────────────────────────────
+// [female voice ID, male voice ID]
+// Voices chosen for conversational naturalness, not theatricality.
+// All used with eleven_multilingual_v2 + style=0.25 for calm, human delivery.
+const EL_VOICES: Record<string, [string, string]> = {
+  en: [
+    "21m00Tcm4TlvDq8ikWAM", // Rachel — calm, warm, conversational
+    "TX3LPaxC6zFa8vFCBzvvA", // Liam  — neutral, American, young
+  ],
+  es: [
+    "z9fAnlkpzviPz146aGWa", // Glinda  — middle-aged, excels in Spanish
+    "pNInz6obpgDQGcFmaJgB", // Adam    — deep, performs well in Spanish
+  ],
+  fr: [
+    "pMsXgVXv3BLzUgSXRplE", // Serena  — pleasant middle-aged, French-capable
+    "JBFqnCBsd6RMkjVDRZzb", // George  — middle-aged British, handles French well
+  ],
+  it: [
+    "ThT5KcBeYPX3keUQqHPh", // Dorothy — pleasant, British intonation adapts to Italian
+    "IKne3meq5aSn9XLyUdCD", // Charlie — casual, conversational, less theatrical
+  ],
+};
+
+const EL_NARRATOR_VOICE = "21m00Tcm4TlvDq8ikWAM"; // Rachel — calm cinematic narrator
 
 const FEMALE_NAMES = new Set([
   "Sofia", "Christine", "Martha", "Sana", "Amina", "Elena", "Joan", "Marta",
   "Laura", "Ana", "Carmen", "Isabel", "María", "Claire", "Emma", "Sarah", "Noa",
 ]);
 
-export const getVoiceId = (characterName: string): string =>
-  FEMALE_NAMES.has(characterName.split(" ")[0]) ? EL_VOICE_FEMALE : EL_VOICE_MALE;
+// Country code (last segment of location string) → UI language
+const COUNTRY_TO_LANG: Record<string, string> = {
+  ES: "es", AR: "es", MX: "es", CO: "es", CL: "es", PE: "es", VE: "es", UY: "es",
+  España: "es", Spain: "es",
+  FR: "fr",
+  IT: "it",
+};
 
-// Language → ElevenLabs language_code (Castilian Spanish for "es")
-const EL_LANG_CODES: Record<string, string> = { en: "en", es: "es", it: "it", fr: "fr" };
+// Derives the character's spoken language from their location string.
+// Fallback to "en" for any country not in the map (e.g. UK, US, PT, CA…).
+export function locationToLang(location: string): string {
+  const parts = location.split(",");
+  const code = parts[parts.length - 1].trim();
+  return COUNTRY_TO_LANG[code] ?? "en";
+}
+
+export const getVoiceId = (characterName: string, lang = "en"): string => {
+  const [female, male] = EL_VOICES[lang] ?? EL_VOICES.en;
+  return FEMALE_NAMES.has(characterName.split(" ")[0]) ? female : male;
+};
 
 // Language → browser speech recognition locale
 const REC_LANGS: Record<string, string> = {
@@ -71,8 +106,6 @@ export function startRecognition(
 }
 
 // ── Narrator audio pre-fetch ─────────────────────────────────────────────────
-// Fetches the full narrator audio from ElevenLabs and returns a blob URL.
-// Call on narrator screen mount so the audio is ready before playback starts.
 export async function fetchNarratorAudio(text: string): Promise<string | null> {
   const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined;
   if (!apiKey) return null;
@@ -85,9 +118,9 @@ export async function fetchNarratorAudio(text: string): Promise<string | null> {
         text,
         model_id: "eleven_multilingual_v2",
         voice_settings: {
-          stability: 0.58,
-          similarity_boost: 0.72,
-          style: 0.0,
+          stability: 0.55,
+          similarity_boost: 0.75,
+          style: 0.10,
           use_speaker_boost: true,
         },
       }),
@@ -100,17 +133,20 @@ export async function fetchNarratorAudio(text: string): Promise<string | null> {
   }
 }
 
-// ── Emotional voice presets ───────────────────────────────────────────────────
-// stability: lower = more trembling/variable; style: higher = more expressive
+// ── Voice settings preset ─────────────────────────────────────────────────────
+// Natural, human delivery — not theatrical.
+// stability 0.45-0.55: consistent without robotic flatness
+// similarity_boost 0.75: close to the voice without artifacts
+// style 0.25: expressive enough to feel human, not enough to sound like an actor
 type EmotionalStatus = "Heavy" | "Searching" | "Tender" | "Anxious" | "Withdrawn" | "Hopeful";
 
 const EMOTION_PRESETS: Record<EmotionalStatus, { stability: number; similarity_boost: number; style: number }> = {
-  Heavy:     { stability: 0.25, similarity_boost: 0.82, style: 0.68 }, // crushed, slow, carrying unbearable weight
-  Tender:    { stability: 0.28, similarity_boost: 0.85, style: 0.72 }, // soft, close to tears, emotionally raw
-  Anxious:   { stability: 0.20, similarity_boost: 0.75, style: 0.78 }, // rapid, nervous, high emotional charge
-  Withdrawn: { stability: 0.45, similarity_boost: 0.72, style: 0.32 }, // distant, hollow but not robotic
-  Searching: { stability: 0.30, similarity_boost: 0.78, style: 0.62 }, // hesitant, uncertain, questioning
-  Hopeful:   { stability: 0.42, similarity_boost: 0.80, style: 0.65 }, // warm, earnest, emotionally present
+  Heavy:     { stability: 0.48, similarity_boost: 0.75, style: 0.25 },
+  Tender:    { stability: 0.45, similarity_boost: 0.75, style: 0.25 },
+  Anxious:   { stability: 0.45, similarity_boost: 0.75, style: 0.25 },
+  Withdrawn: { stability: 0.55, similarity_boost: 0.75, style: 0.20 },
+  Searching: { stability: 0.50, similarity_boost: 0.75, style: 0.25 },
+  Hopeful:   { stability: 0.50, similarity_boost: 0.75, style: 0.25 },
 };
 
 // Tracks the active ElevenLabs Audio element so stopSpeaking() can kill it
@@ -153,7 +189,6 @@ async function speakElevenLabs(
 // ── Browser TTS fallback ──────────────────────────────────────────────────────
 function getBestBrowserVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
-  // Prefer neural / enhanced / Google voices — they sound much more natural
   return (
     voices.find((v) => v.name.includes("Neural") && v.lang.startsWith("en")) ??
     voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ??
@@ -174,7 +209,6 @@ function speakBrowser(
   u.rate = opts?.rate ?? 0.88;
   u.pitch = 1.0;
 
-  // Voices load asynchronously — wait if not ready yet
   const assign = () => {
     const voice = getBestBrowserVoice();
     if (voice) u.voice = voice;
@@ -201,15 +235,17 @@ export async function speakText(
     rate?: number;
     onStart?: () => void;
     onEnd?: () => void;
+    lang?: string; // character's derived language (from location), or UI lang
   },
 ): Promise<void> {
-  // Narrator always uses browser TTS — different voice, avoids spending ElevenLabs credits on long text
   if (!opts?.narrator) {
     const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY as string | undefined;
     if (apiKey) {
-      const voiceId = opts?.gender === "female" ? EL_VOICE_FEMALE
-        : opts?.gender === "male" ? EL_VOICE_MALE
-        : getVoiceId(opts?.characterName ?? "");
+      const effectiveLang = opts?.lang ?? "en";
+      const [femaleVoice, maleVoice] = EL_VOICES[effectiveLang] ?? EL_VOICES.en;
+      const voiceId = opts?.gender === "female" ? femaleVoice
+        : opts?.gender === "male" ? maleVoice
+        : getVoiceId(opts?.characterName ?? "", effectiveLang);
       try {
         await speakElevenLabs(text, voiceId, apiKey, opts);
         return;

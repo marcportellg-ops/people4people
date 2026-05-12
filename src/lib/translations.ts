@@ -264,6 +264,7 @@ const en = {
     signingIn: "Signing in…",
     privacy: "Your identity stays private. We never share your name or email with the people you speak to.",
     error: "Could not sign in. Please try again.",
+    freeAndAnonymous: "It's free and anonymous.",
   },
 };
 
@@ -531,6 +532,7 @@ const es: typeof en = {
     signingIn: "Iniciando sesión…",
     privacy: "Tu identidad permanece privada. Nunca compartimos tu nombre o correo con las personas con las que hablas.",
     error: "No se pudo iniciar sesión. Por favor, inténtalo de nuevo.",
+    freeAndAnonymous: "Es gratis y anónimo.",
   },
 };
 
@@ -798,6 +800,7 @@ const it: typeof en = {
     signingIn: "Accesso in corso…",
     privacy: "La tua identità rimane privata. Non condividiamo mai il tuo nome o email con le persone con cui parli.",
     error: "Impossibile accedere. Per favore riprova.",
+    freeAndAnonymous: "È gratuito e anonimo.",
   },
 };
 
@@ -1065,6 +1068,7 @@ const fr: typeof en = {
     signingIn: "Connexion en cours…",
     privacy: "Ton identité reste privée. Nous ne partageons jamais ton nom ou ton email avec les personnes à qui tu parles.",
     error: "Impossible de se connecter. Veuillez réessayer.",
+    freeAndAnonymous: "C'est gratuit et anonyme.",
   },
 };
 

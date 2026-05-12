@@ -1,3 +1,4 @@
+import { INTRO_CHARACTER } from "./introCharacter";
 import joan from "@/assets/joan.jpg";
 import marta from "@/assets/marta.jpg";
 import david from "@/assets/david.jpg";
@@ -44,6 +45,7 @@ export type Character = {
 };
 
 export const characters: Character[] = [
+  INTRO_CHARACTER,
   {
     id: "joan",
     name: "Joan",

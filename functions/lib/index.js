@@ -32,7 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkStaleCharacters = exports.onCharacterStatsChange = exports.notifyHelperTrophy = exports.notifyHelperOnImpact = void 0;
 const admin = __importStar(require("firebase-admin"));
@@ -42,10 +41,20 @@ const scheduler_1 = require("firebase-functions/v2/scheduler");
 const webpush = __importStar(require("web-push"));
 admin.initializeApp();
 const db = admin.firestore();
-const VAPID_PUBLIC_KEY = (_a = process.env.VAPID_PUBLIC_KEY) !== null && _a !== void 0 ? _a : "";
-const VAPID_PRIVATE_KEY = (_b = process.env.VAPID_PRIVATE_KEY) !== null && _b !== void 0 ? _b : "";
-const VAPID_SUBJECT = (_c = process.env.VAPID_SUBJECT) !== null && _c !== void 0 ? _c : "mailto:marcportellg@gmail.com";
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+const VAPID_SUBJECT = "mailto:marcportellg@gmail.com";
+let webpushReady = false;
+function initWebPush() {
+    var _a, _b;
+    if (webpushReady)
+        return true;
+    const pub = (_a = process.env.VAPID_PUBLIC_KEY) !== null && _a !== void 0 ? _a : "";
+    const priv = (_b = process.env.VAPID_PRIVATE_KEY) !== null && _b !== void 0 ? _b : "";
+    if (!pub || !priv)
+        return false;
+    webpush.setVapidDetails(VAPID_SUBJECT, pub, priv);
+    webpushReady = true;
+    return true;
+}
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function getUserSubscription(uid) {
     var _a;
@@ -58,6 +67,8 @@ async function getUserSubscription(uid) {
     return sub;
 }
 async function sendPush(uid, payload) {
+    if (!initWebPush())
+        return;
     const sub = await getUserSubscription(uid);
     if (!sub)
         return;

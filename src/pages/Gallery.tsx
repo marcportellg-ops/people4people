@@ -9,8 +9,9 @@ import type { Character } from "@/data/characters";
 import {
   getAllUserCharacters, getWeeklyRanking, type RankingEntry,
   getCharacterTagStats, getDiscoveryData, type DiscoveryData,
-  getHelperRecentEmotionTags,
+  getHelperRecentEmotionTags, saveCharacterTranslations,
 } from "@/lib/db";
+import { translateCharacterFields } from "@/lib/claude";
 import { Search, TrendingUp, Heart, Flame, Sparkles, Shuffle, X, ArrowUpRight } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
@@ -97,7 +98,7 @@ function pickSurpriseCharacter(recentTags: string[], pool: Character[]): Charact
 }
 
 const Gallery = () => {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -127,6 +128,33 @@ const Gallery = () => {
     if (!user) return;
     getHelperRecentEmotionTags(user.uid).then(setRecentHelperTags).catch(() => {});
   }, [user]);
+
+  // For user-created characters missing the current language, trigger translation
+  // and update local state + Firestore so the card shows translated text.
+  useEffect(() => {
+    if (lang === "en" || userCharacters.length === 0) return;
+    const tl = lang as "es" | "it" | "fr";
+    const hardcodedIds = new Set(characters.map((c) => c.id));
+
+    userCharacters.forEach((char) => {
+      if (hardcodedIds.has(char.id)) return; // already has manual translations
+      const existing = char.translations?.[tl];
+      if (existing?.intro && existing.summary) return; // already translated
+      const fields = {
+        narratorStory: char.narratorStory ?? "",
+        summary: char.summary,
+        longStory: char.longStory,
+        intro: char.intro,
+      };
+      translateCharacterFields(fields, tl).then((translated) => {
+        const newTranslations = { ...char.translations, [tl]: translated };
+        setUserCharacters((prev) =>
+          prev.map((c) => c.id === char.id ? { ...c, translations: newTranslations } : c)
+        );
+        saveCharacterTranslations(char.id, newTranslations).catch(() => {});
+      }).catch(() => {});
+    });
+  }, [userCharacters, lang]);
 
   const enrichedUserChars = useMemo(
     () => userCharacters.map((c) => ({ ...c, topEmotionTags: allTagStats[c.id] ?? c.topEmotionTags })),
