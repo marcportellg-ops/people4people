@@ -5,7 +5,7 @@ import { ChevronRight, Mic, MicOff, Send, Clock, Music, Flame } from "lucide-rea
 import { ambient, type AmbientStatus } from "@/lib/ambient";
 import { characters, getCharacter, type Character } from "@/data/characters";
 import {
-  getCharacterReply, summarizeConversation, moderateConversation, detectCrisis,
+  getCharacterReplyStream, summarizeConversation, moderateConversation, detectCrisis,
   generateNarratorStory, translateCharacterFields, generateDynamicOpening, generateClosingLine,
 } from "@/lib/claude";
 import {
@@ -29,7 +29,7 @@ import { calculateLevel } from "@/lib/levels";
 import { IMPACT_TROPHY_IDS } from "@/lib/trophies";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "@/lib/firebase";
-import { getPushPermission } from "@/lib/push";
+import { getPushPermission, isPushSupported } from "@/lib/push";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Msg = { role: "char" | "user"; text: string; t: string };
@@ -137,6 +137,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const [crisisLevel, setCrisisLevel] = useState<"low" | "high" | null>(null);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [isStreamingReply, setIsStreamingReply] = useState(false);
+  const [streamingReply, setStreamingReply] = useState("");
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [deepExchangeCount, setDeepExchangeCount] = useState(0);
   const [showEmotionalPortrait, setShowEmotionalPortrait] = useState(false);
@@ -176,6 +178,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const timeLeftRef = useRef(isDemo ? 3 * 60 : 15 * 60);
   const resumeCheckedRef = useRef(false);
   const skipSaveRef = useRef(false);
+  const entradaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Auto-dismiss login modal on sign-in ───────────────────────────────────
   useEffect(() => { if (user && showLoginModal) setShowLoginModal(false); }, [user]);
@@ -333,14 +337,17 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   // ── CIERRE: timer for tag UI and skip button ──────────────────────────────
   useEffect(() => {
     if (cinemaPhase !== "cierre") return;
-    const t1 = setTimeout(() => setShowCierreTagUI(true), isDemo ? 1200 : 3000);
-    const t2 = setTimeout(() => setShowCierreSkip(true), isDemo ? 2500 : 8000);
+    const t1 = setTimeout(() => setShowCierreTagUI(true), isDemo ? 1000 : 1200);
+    const t2 = setTimeout(() => setShowCierreSkip(true), isDemo ? 2000 : 3500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [cinemaPhase]);
 
   // ── Unmount cleanup ───────────────────────────────────────────────────────
   useEffect(() => () => {
+    if (entradaTimerRef.current) clearTimeout(entradaTimerRef.current);
+    if (saveNavTimerRef.current) clearTimeout(saveNavTimerRef.current);
     stopSpeaking();
+    ambient.stop();
     ambient.setDuckedForSpeaking(false);
     if (!isDemo && !skipSaveRef.current && !endedRef.current && conversationIdRef.current && messagesRef.current.length > 1) {
       pauseConversation(conversationIdRef.current, timeLeftRef.current).catch(() => {});
@@ -426,7 +433,9 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     if (!user && !isDemo) { setShowLoginModal(true); return; }
     if (entradaExiting) return;
     setEntradaExiting(true);
-    setTimeout(() => {
+    if (entradaTimerRef.current) clearTimeout(entradaTimerRef.current);
+    entradaTimerRef.current = setTimeout(() => {
+      entradaTimerRef.current = null;
       const text = openingText || character?.intro || "";
       setMessages([{ role: "char", text, t: now() }]);
       setSpeaking(true);
@@ -477,7 +486,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     skipSaveRef.current = true;
     setIsSaving(false);
     setShowSaveConfirm(true);
-    setTimeout(() => { navigate("/gallery"); }, 2800);
+    if (saveNavTimerRef.current) clearTimeout(saveNavTimerRef.current);
+    saveNavTimerRef.current = setTimeout(() => { saveNavTimerRef.current = null; navigate("/gallery"); }, 2800);
   };
 
   const handleExitConfirm = () => {
@@ -523,55 +533,107 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
 
   const send = async (textOverride?: string) => {
     const msgText = (textOverride ?? input).trim();
-    if (!msgText || ended || timeLeft === 0 || isTyping || !character) return;
+    if (!msgText || ended || timeLeft === 0 || isTyping || isStreamingReply || !character) return;
+
     const userMsg: Msg = { role: "user", text: msgText, t: now() };
     setMessages((m) => [...m, userMsg]);
     if (!textOverride) setInput("");
     setIsTyping(true);
 
     const wordCount = msgText.split(/\s+/).filter(Boolean).length;
-    const organicDelay = Math.max(3000, Math.min(8000, 1500 + wordCount * 320));
+    const THINKING_MS = Math.max(1200, Math.min(2500, 800 + wordCount * 150));
+    const TIMEOUT_MS = 15_000;
+    const sendTime = Date.now();
+
+    console.log("[Conversation] send: chars=%d words=%d thinkingMs=%d", msgText.length, wordCount, THINKING_MS);
 
     const history = [...messages, userMsg]
       .slice(1)
       .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("assistant" as const), content: m.text }));
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.warn("[Conversation] 15s timeout — aborting stream");
+      controller.abort();
+    }, TIMEOUT_MS);
+
+    let streamBuffer = "";
+    let thinkingDone = false;
+    const charT = now();
+
     try {
       const [reply] = await Promise.all([
-        getCharacterReply(character, history, lang),
-        new Promise<void>((r) => setTimeout(r, organicDelay)),
+        getCharacterReplyStream(
+          character,
+          history,
+          lang,
+          (chunk) => {
+            streamBuffer = chunk;
+            if (thinkingDone) {
+              setIsTyping(false);
+              setIsStreamingReply(true);
+              setStreamingReply(chunk);
+            }
+          },
+          controller.signal,
+        ),
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            thinkingDone = true;
+            console.log("[Conversation] thinking delay done at +%dms, buffered=%d chars", Date.now() - sendTime, streamBuffer.length);
+            if (streamBuffer) {
+              setIsTyping(false);
+              setIsStreamingReply(true);
+              setStreamingReply(streamBuffer);
+            }
+            resolve();
+          }, THINKING_MS);
+        }),
       ]);
-      const charT = now();
-      const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: reply, t: charT }];
+
+      clearTimeout(timeoutId);
+      console.log("[Conversation] reply complete: %d chars, total +%dms", reply.length, Date.now() - sendTime);
+
+      const finalReply = reply || streamBuffer;
+      const updatedMsgs = [...messages, userMsg, { role: "char" as const, text: finalReply, t: charT }];
       setMessages(updatedMsgs);
+
       if (conversationId && !isDemo) {
         await saveMessages(conversationId, [
           { role: "user", text: userMsg.text, t: userMsg.t },
-          { role: "char", text: reply, t: charT },
+          { role: "char", text: finalReply, t: charT },
         ]);
       }
-      const replyWords = reply.split(/\s+/).filter(Boolean).length;
-      if (wordCount > 15 && replyWords > 15) {
-        setDeepExchangeCount((n) => n + 1);
-      }
+
+      const replyWords = finalReply.split(/\s+/).filter(Boolean).length;
+      if (wordCount > 15 && replyWords > 15) setDeepExchangeCount((n) => n + 1);
+
       setSpeaking(true);
       ambient.setDuckedForSpeaking(true);
-      speakText(reply, {
+      speakText(finalReply, {
         characterName: character.name,
         gender: character.gender,
         emotionalStatus: character.emotionalStatus,
         lang,
         onEnd: () => { setSpeaking(false); ambient.setDuckedForSpeaking(false); },
       });
+
       if (crisisLevel !== "high") {
         detectCrisis(updatedMsgs.slice(-8).map((m) => ({ role: m.role, text: m.text })))
           .then(({ crisis, level }) => { if (crisis) setCrisisLevel((prev) => (prev === "high" ? "high" : level)); })
           .catch(() => {});
       }
-    } catch {
-      setMessages((m) => [...m, { role: "char", text: "...", t: now() }]);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isAborted = controller.signal.aborted;
+      const errorText = isAborted ? t("conversation.replyTimeout") : t("conversation.replyError");
+      console.error("[Conversation] reply failed:", isAborted ? "TIMEOUT" : err);
+      setMessages((m) => [...m, { role: "char" as const, text: errorText, t: now() }]);
+      setInput(msgText);
     } finally {
       setIsTyping(false);
+      setIsStreamingReply(false);
+      setStreamingReply("");
     }
   };
 
@@ -584,8 +646,10 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     if (conversationId && tags.length > 0) {
       await saveEmotionTags(conversationId, tags, character?.id ?? "").catch(() => {});
     }
-    // Show push permission prompt if not yet granted and user is logged in
-    if (user && getPushPermission() === "default") {
+    // Only show push prompt when the browser actually supports it — otherwise navigate directly.
+    // PushPermissionPrompt returns null when unsupported but never calls onDone(), which would
+    // leave the user permanently stuck on the dark cierre screen.
+    if (user && getPushPermission() === "default" && isPushSupported()) {
       setShowPushPrompt(true);
     } else {
       navigate(user ? "/profile" : "/gallery");
@@ -789,6 +853,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
             key="entrada"
             className={`min-h-screen flex flex-col items-center justify-center px-6 ${isDemo ? "pt-24" : "pt-16"}`}
             animate={{ opacity: entradaExiting ? 0 : 1, scale: entradaExiting ? 0.97 : 1 }}
+            exit={{ opacity: 0, transition: { duration: 0 } }}
             transition={{ duration: 1.5, ease: [0.65, 0, 0.35, 1] }}
           >
             {/* Portrait */}
@@ -875,6 +940,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
             key="conversacion"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
             transition={{ duration: 0.8 }}
             className={`min-h-screen flex ${isDemo ? "pt-21" : "pt-14"}`}
           >
@@ -1011,8 +1077,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                   );
                 })}
 
-                {/* Typing indicator */}
-                {isTyping && (
+                {/* Typing indicator — only during thinking phase, not while streaming */}
+                {isTyping && !isStreamingReply && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <div className="border-t border-border/12 my-7" />
                     <p className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground/35 mb-3">{character.name}</p>
@@ -1026,6 +1092,22 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                         />
                       ))}
                     </div>
+                  </motion.div>
+                )}
+
+                {/* Streaming reply — progressive text display */}
+                {isStreamingReply && streamingReply && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+                    <div className="border-t border-border/12 my-7" />
+                    <p className="text-[9px] uppercase tracking-[0.28em] text-muted-foreground/35 mb-2">{character.name}</p>
+                    <p className={`font-display italic text-base text-foreground/85 leading-relaxed ${isEmotionallyCharged(streamingReply) ? "text-foreground tracking-[0.025em]" : ""}`}>
+                      {streamingReply}
+                      <motion.span
+                        animate={{ opacity: [1, 0, 1] }}
+                        transition={{ duration: 0.6, repeat: Infinity }}
+                        className="inline-block w-0.5 h-[1.1em] bg-foreground/40 ml-0.5 align-middle"
+                      />
+                    </p>
                   </motion.div>
                 )}
 
@@ -1054,7 +1136,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                       rows={1}
-                      disabled={listening || isTyping}
+                      disabled={listening || isTyping || isStreamingReply}
                       placeholder={listening ? t("conversation.listening") : `${t("conversation.replyTo")} ${character.name}…`}
                       className="flex-1 bg-transparent border-0 border-b border-border/20 pb-2 text-sm placeholder:text-muted-foreground/25 focus:outline-none focus:border-border/45 resize-none transition disabled:opacity-50"
                       style={{ minHeight: "2rem", maxHeight: "6rem" }}
@@ -1066,7 +1148,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                     />
                     <button
                       onClick={() => send()}
-                      disabled={!input.trim() || isTyping}
+                      disabled={!input.trim() || isTyping || isStreamingReply}
                       className="mb-1 grid h-7 w-7 place-items-center rounded-full bg-gradient-amber text-primary-foreground hover:scale-105 transition disabled:opacity-30 disabled:hover:scale-100 shrink-0"
                     >
                       <Send className="h-3 w-3" />
@@ -1107,6 +1189,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
             key="cierre"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
             transition={{ duration: 1.2 }}
             className="min-h-screen flex flex-col items-center justify-center px-6 pt-16 pb-16"
           >

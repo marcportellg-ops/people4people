@@ -125,14 +125,10 @@ intro: ${fields.intro}`,
   };
 }
 
-export async function getCharacterReply(
-  character: Character,
-  conversationHistory: { role: "user" | "assistant"; content: string }[],
-  language?: string,
-): Promise<string> {
+function buildCharacterSystemPrompt(character: Character, language?: string): string {
   const r = character.refinements;
   const langName = language ? LANG_NAMES[language] ?? "English" : "English";
-  const systemPrompt = `You are ${character.name}, a real person seeking emotional support and perspective.
+  return `You are ${character.name}, a real person seeking emotional support and perspective.
 
 About you:
 - Age: ${character.age}
@@ -159,17 +155,74 @@ How to speak:
 - React honestly to what they say. If something lands, let it reach you. If they misread you, show the gap.
 - Never break character or mention being an AI.
 - IMPORTANT: Always respond in ${langName}. Understand messages written in any language, but always reply in ${langName}.`;
+}
 
+export async function getCharacterReply(
+  character: Character,
+  conversationHistory: { role: "user" | "assistant"; content: string }[],
+  language?: string,
+): Promise<string> {
+  const systemPrompt = buildCharacterSystemPrompt(character, language);
+  console.log("[Claude] getCharacterReply: start, history=", conversationHistory.length);
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 300,
     system: systemPrompt,
     messages: conversationHistory,
   });
-
   const block = response.content[0];
-  if (block.type === "text") return block.text;
-  return "...";
+  if (block.type === "text") {
+    console.log("[Claude] getCharacterReply: done, chars=", block.text.length);
+    return block.text;
+  }
+  console.warn("[Claude] getCharacterReply: unexpected block type", block.type);
+  return "";
+}
+
+export async function getCharacterReplyStream(
+  character: Character,
+  conversationHistory: { role: "user" | "assistant"; content: string }[],
+  language: string | undefined,
+  onChunk: (cumulativeText: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const systemPrompt = buildCharacterSystemPrompt(character, language);
+  console.log("[Claude] getCharacterReplyStream: start, history=", conversationHistory.length);
+
+  const stream = client.messages.stream({
+    model: "claude-sonnet-4-6",
+    max_tokens: 300,
+    system: systemPrompt,
+    messages: conversationHistory,
+  });
+
+  if (signal) {
+    const abortHandler = () => {
+      console.warn("[Claude] getCharacterReplyStream: aborted by signal");
+      stream.abort();
+    };
+    signal.addEventListener("abort", abortHandler, { once: true });
+  }
+
+  let snapshot = "";
+  stream.on("text", (_delta, cumulative) => {
+    snapshot = cumulative;
+    onChunk(cumulative);
+  });
+
+  try {
+    await stream.finalMessage();
+  } catch (err) {
+    if (signal?.aborted) {
+      const abortErr = new DOMException("Stream aborted", "AbortError");
+      throw abortErr;
+    }
+    console.error("[Claude] getCharacterReplyStream: error", err);
+    throw err;
+  }
+
+  console.log("[Claude] getCharacterReplyStream: done, chars=", snapshot.length);
+  return snapshot;
 }
 
 export async function generateCharacterProfile(
