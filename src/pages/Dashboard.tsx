@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles, Users, Heart, Zap, FlaskConical } from "lucide-react";
+import { MessageCircle, ShieldCheck, Star, TrendingUp, FileText, Clock, CheckCircle2, AlertCircle, XCircle, RefreshCw, Sparkles, Users, Heart, Zap, FlaskConical, Flag, Ban, ArrowUpCircle } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { TrustStrip, TrustBadge } from "@/components/Trust";
 import { useAuth } from "@/context/AuthContext";
-import { getMyCharacters, getConversationsForCharacters, getAllConversations, getAllUserCharacters, saveCharacterInsights, getCharacterInsights, getAllHelpers, setUserLevel, awardImpactTrophy, type ConversationDoc, type ModerationResult, type CharacterInsights, type UserDoc } from "@/lib/db";
+import { getMyCharacters, getConversationsForCharacters, getAllConversations, getAllUserCharacters, saveCharacterInsights, getCharacterInsights, getAllHelpers, setUserLevel, awardImpactTrophy, markConversationReviewed, escalateConversation, blockUser, type ConversationDoc, type ModerationResult, type CharacterInsights, type UserDoc, type FlaggedMessage } from "@/lib/db";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "@/lib/firebase";
 import { synthesizeCharacterInsights } from "@/lib/claude";
@@ -24,6 +24,7 @@ const Dashboard = () => {
   const [filter, setFilter] = useState<Filter>("all");
   const [allUsers, setAllUsers] = useState<UserEntry[]>([]);
   const [impactPending, setImpactPending] = useState<Record<string, boolean>>({});
+  const [moderationActionPending, setModerationActionPending] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -69,6 +70,34 @@ const Dashboard = () => {
     setImpactPending((p) => ({ ...p, [`${convId}_${trophyId}`]: false }));
   };
 
+  const handleMarkReviewed = async (convId: string) => {
+    setModerationActionPending((p) => ({ ...p, [`review_${convId}`]: true }));
+    await markConversationReviewed(convId);
+    setConversations((prev) => prev.map((c) => c.id === convId
+      ? { ...c, moderation: c.moderation ? { ...c.moderation, reviewed: true } : c.moderation }
+      : c,
+    ));
+    setModerationActionPending((p) => ({ ...p, [`review_${convId}`]: false }));
+  };
+
+  const handleEscalate = async (convId: string) => {
+    setModerationActionPending((p) => ({ ...p, [`escalate_${convId}`]: true }));
+    await escalateConversation(convId);
+    setConversations((prev) => prev.map((c) => c.id === convId
+      ? { ...c, moderation: c.moderation ? { ...c.moderation, escalated: true } : c.moderation }
+      : c,
+    ));
+    setModerationActionPending((p) => ({ ...p, [`escalate_${convId}`]: false }));
+  };
+
+  const handleBlockUser = async (helperId: string) => {
+    if (!confirm(`Block user ${helperId.slice(0, 8)}…? They will be unable to have new conversations.`)) return;
+    setModerationActionPending((p) => ({ ...p, [`block_${helperId}`]: true }));
+    await blockUser(helperId);
+    setAllUsers((prev) => prev.map((u) => u.uid === helperId ? { ...u, blocked: true } : u));
+    setModerationActionPending((p) => ({ ...p, [`block_${helperId}`]: false }));
+  };
+
   // Stats
   const totalMessages = conversations.reduce((n, c) => n + c.messages.length, 0);
   const thisWeek = conversations.filter((c) => {
@@ -79,6 +108,9 @@ const Dashboard = () => {
   const inReview   = conversations.filter((c) => c.moderation?.decision === "review").length;
   const rejected   = conversations.filter((c) => c.moderation?.decision === "rejected").length;
   const pending    = conversations.filter((c) => !c.moderation).length;
+  const flaggedUnreviewed = conversations.filter(
+    (c) => (c.moderation?.flaggedMessages?.length ?? 0) > 0 && !c.moderation?.reviewed,
+  );
   const avgScore   = (() => {
     const scored = conversations.filter((c) => c.moderation?.score != null);
     if (!scored.length) return null;
@@ -108,9 +140,17 @@ const Dashboard = () => {
           className="flex flex-col md:flex-row md:items-end justify-between gap-4"
         >
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-primary/90">
-              {isModerator ? "Moderation dashboard" : "Your dashboard"}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs uppercase tracking-[0.22em] text-primary/90">
+                {isModerator ? "Moderation dashboard" : "Your dashboard"}
+              </p>
+              {isModerator && !loading && flaggedUnreviewed.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[10px] font-medium text-amber-400">
+                  <Flag className="h-2.5 w-2.5" />
+                  {flaggedUnreviewed.length} flagged · unreviewed
+                </span>
+              )}
+            </div>
             <h1 className="mt-3 font-display text-5xl text-gradient pb-2">
               {isModerator ? "All conversations." : "A quiet inbox of care."}
             </h1>
@@ -328,6 +368,129 @@ const Dashboard = () => {
           </section>
         )}
 
+        {/* Flagged conversations (moderator only) */}
+        {isModerator && !loading && flaggedUnreviewed.length > 0 && (
+          <section>
+            <div className="flex items-center gap-3 mb-5">
+              <Flag className="h-5 w-5 text-amber-400" />
+              <h2 className="font-display text-2xl">Flagged messages</h2>
+              <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-xs text-amber-400 font-medium">
+                {flaggedUnreviewed.length} unreviewed
+              </span>
+            </div>
+            <div className="space-y-4">
+              {flaggedUnreviewed
+                .sort((a, b) => {
+                  const maxSev = (c: ConversationDoc) => {
+                    const msgs = c.moderation?.flaggedMessages ?? [];
+                    if (msgs.some((m) => m.severity === "high")) return 2;
+                    if (msgs.some((m) => m.severity === "medium")) return 1;
+                    return 0;
+                  };
+                  return maxSev(b) - maxSev(a);
+                })
+                .map((conv) => {
+                  const char = myChars.find((c) => c.id === conv.characterId);
+                  const flagged = conv.moderation?.flaggedMessages ?? [];
+                  const maxSeverity = flagged.some((m) => m.severity === "high") ? "high"
+                    : flagged.some((m) => m.severity === "medium") ? "medium" : "low";
+                  const when = conv.startedAt
+                    ? new Date(conv.startedAt.toMillis?.() ?? 0).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                    : "Unknown";
+                  return (
+                    <motion.article
+                      key={conv.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`glass rounded-3xl p-6 border-l-2 ${
+                        maxSeverity === "high" ? "border-l-red-500/50" : "border-l-amber-500/50"
+                      }`}
+                    >
+                      <header className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {char?.portrait && (
+                            <div className="relative h-10 w-10 rounded-lg overflow-hidden shrink-0">
+                              <img src={char.portrait} alt={char.name} className="absolute inset-0 h-full w-full object-cover" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                              {char?.name ?? "Unknown"} · {when}
+                            </p>
+                            <h3 className="mt-0.5 font-display text-lg">
+                              {flagged.length} flagged message{flagged.length !== 1 ? "s" : ""}
+                            </h3>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {conv.moderation?.qualityScore != null && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-surface-elevated/60 px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                              Quality {conv.moderation.qualityScore}/10
+                            </span>
+                          )}
+                          {conv.moderation?.escalated && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] uppercase tracking-wider text-red-400">
+                              <ArrowUpCircle className="h-3 w-3" /> Escalated
+                            </span>
+                          )}
+                        </div>
+                      </header>
+
+                      {/* Flagged messages list */}
+                      <div className="mt-4 space-y-2">
+                        {flagged.map((fm, fi) => (
+                          <div
+                            key={fi}
+                            className={`flex items-start gap-3 rounded-xl p-3 text-xs ${
+                              fm.severity === "high"
+                                ? "bg-red-500/8 border border-red-500/20"
+                                : "bg-amber-500/8 border border-amber-500/20"
+                            }`}
+                          >
+                            <span className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                              fm.severity === "high" ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"
+                            }`}>
+                              {fm.severity} · {fm.reason.replace("_", " ")}
+                            </span>
+                            <p className="text-foreground/80 leading-relaxed">"{fm.text}"</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => handleMarkReviewed(conv.id)}
+                          disabled={moderationActionPending[`review_${conv.id}`]}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          Mark reviewed
+                        </button>
+                        <button
+                          onClick={() => handleEscalate(conv.id)}
+                          disabled={moderationActionPending[`escalate_${conv.id}`] || !!conv.moderation?.escalated}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-50"
+                        >
+                          <ArrowUpCircle className="h-3 w-3" />
+                          {conv.moderation?.escalated ? "Escalated" : "Escalate"}
+                        </button>
+                        <button
+                          onClick={() => handleBlockUser(conv.helperId)}
+                          disabled={moderationActionPending[`block_${conv.helperId}`] || allUsers.find((u) => u.uid === conv.helperId)?.blocked}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-xs text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+                        >
+                          <Ban className="h-3 w-3" />
+                          {allUsers.find((u) => u.uid === conv.helperId)?.blocked ? "Blocked" : "Block user"}
+                        </button>
+                      </div>
+                    </motion.article>
+                  );
+                })}
+            </div>
+          </section>
+        )}
+
         {/* Conversations */}
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -433,13 +596,40 @@ const Dashboard = () => {
                           </h3>
                         </div>
                       </div>
-                      <ModerationBadge result={conv.moderation} showScore={isModerator} />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isModerator && conv.moderation?.qualityScore != null && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-surface-elevated/50 px-2.5 py-1 text-[10px] text-muted-foreground">
+                            Quality {conv.moderation.qualityScore}/10
+                          </span>
+                        )}
+                        {isModerator && (conv.moderation?.flaggedMessages?.length ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] text-amber-400">
+                            <Flag className="h-2.5 w-2.5" />
+                            {conv.moderation!.flaggedMessages!.length} flagged
+                          </span>
+                        )}
+                        <ModerationBadge result={conv.moderation} showScore={isModerator} />
+                      </div>
                     </header>
 
-                    {/* Moderation reason (moderator only) */}
-                    {isModerator && conv.moderation?.reason && (
-                      <div className="mt-3 text-xs text-muted-foreground italic border-l border-border/40 pl-3">
-                        {conv.moderation.reason}
+                    {/* Moderation reason + quality breakdown (moderator only) */}
+                    {isModerator && conv.moderation && (
+                      <div className="mt-3 space-y-1.5">
+                        {conv.moderation.reason && (
+                          <p className="text-xs text-muted-foreground italic border-l border-border/40 pl-3">
+                            {conv.moderation.reason}
+                          </p>
+                        )}
+                        {conv.moderation.listening != null && (
+                          <div className="flex items-center gap-4 text-[10px] text-muted-foreground pl-3">
+                            <span>Listening: <span className="text-foreground/70">{conv.moderation.listening}/10</span></span>
+                            <span>Safety: <span className="text-foreground/70">{conv.moderation.safety}/10</span></span>
+                            <span>Depth: <span className="text-foreground/70">{conv.moderation.depth}/10</span></span>
+                            {conv.moderation.helperCrisis && (
+                              <span className="text-amber-400 font-medium">⚠ Helper crisis detected</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 

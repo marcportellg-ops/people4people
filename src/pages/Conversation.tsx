@@ -7,6 +7,7 @@ import { characters, getCharacter, type Character } from "@/data/characters";
 import {
   getCharacterReplyStream, summarizeConversation, moderateConversation, detectCrisis,
   generateNarratorStory, translateCharacterFields, generateDynamicOpening, generateClosingLine,
+  moderateMessageRealtime, scoreConversationQuality,
 } from "@/lib/claude";
 import {
   createConversation, saveMessages, endConversation, getCharacterById,
@@ -14,6 +15,7 @@ import {
   saveCharacterTranslations, getPausedConversation, pauseConversation, discardPausedConversation,
   getUserTrophies, awardTrophies, setUserLevel, updateStreak,
   rebuildWeeklyRanking, getHelperConversations, saveEmotionTags,
+  type FlaggedMessage,
 } from "@/lib/db";
 import { sendDeliveryEmail } from "@/lib/email";
 import { isSpeechSupported, startRecognition, speakText, stopSpeaking, fetchNarratorAudio, locationToLang } from "@/lib/voice";
@@ -155,6 +157,8 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const [showExitModal, setShowExitModal] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCheckingModeration, setIsCheckingModeration] = useState(false);
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(null);
 
   // ── Resume draft modal ────────────────────────────────────────────────────
   const [pausedDraft, setPausedDraft] = useState<{
@@ -180,6 +184,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
   const skipSaveRef = useRef(false);
   const entradaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveNavTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flaggedMessagesRef = useRef<FlaggedMessage[]>([]);
 
   // ── Auto-dismiss login modal on sign-in ───────────────────────────────────
   useEffect(() => { if (user && showLoginModal) setShowLoginModal(false); }, [user]);
@@ -362,12 +367,18 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
     const msgs = messagesRef.current.slice(1);
     if (msgs.filter((m) => m.role === "user").length >= 2) {
       const creatorEmail = (character as any).creatorEmail as string | undefined;
+      const capturedFlagged = [...flaggedMessagesRef.current];
       Promise.all([
         summarizeConversation(character, msgs),
         moderateConversation(character, msgs),
-      ]).then(async ([s, m]) => {
+        scoreConversationQuality(character, msgs),
+      ]).then(async ([s, m, q]) => {
         await saveConversationSummary(conversationId, s);
-        await saveConversationModeration(conversationId, m);
+        await saveConversationModeration(conversationId, {
+          ...m,
+          ...q,
+          flaggedMessages: capturedFlagged.length > 0 ? capturedFlagged : undefined,
+        });
         if (m.decision === "deliver" && creatorEmail) {
           sendDeliveryEmail({ toEmail: creatorEmail, characterName: character.name, summary: s.summary, highlight: s.highlight, recommendations: s.recommendations }).catch(() => {});
         }
@@ -533,7 +544,34 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
 
   const send = async (textOverride?: string) => {
     const msgText = (textOverride ?? input).trim();
-    if (!msgText || ended || timeLeft === 0 || isTyping || isStreamingReply || !character) return;
+    if (!msgText || ended || timeLeft === 0 || isTyping || isStreamingReply || isCheckingModeration || !character) return;
+
+    // Layer 1: Real-time moderation — fast Haiku check before anything else
+    if (!isDemo) {
+      setIsCheckingModeration(true);
+      let modCheck = { safe: true, reason: undefined as FlaggedMessage["reason"] | undefined, severity: undefined as FlaggedMessage["severity"] | undefined };
+      try {
+        const result = await moderateMessageRealtime(msgText);
+        modCheck = { safe: result.safe, reason: result.reason, severity: result.severity };
+      } catch {
+        // fail open — moderation error never blocks the user
+      } finally {
+        setIsCheckingModeration(false);
+      }
+
+      if (!modCheck.safe && modCheck.severity === "high") {
+        if (modCheck.reason === "crisis_detection") {
+          setCrisisLevel("high");
+        } else {
+          setBlockedNotice(t("conversation.messageBlocked"));
+          setTimeout(() => setBlockedNotice(null), 4000);
+        }
+        return;
+      }
+      if (!modCheck.safe && modCheck.severity === "medium" && modCheck.reason) {
+        flaggedMessagesRef.current.push({ text: msgText, reason: modCheck.reason, severity: "medium", t: now() });
+      }
+    }
 
     const userMsg: Msg = { role: "user", text: msgText, t: now() };
     setMessages((m) => [...m, userMsg]);
@@ -1136,7 +1174,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                       rows={1}
-                      disabled={listening || isTyping || isStreamingReply}
+                      disabled={listening || isTyping || isStreamingReply || isCheckingModeration}
                       placeholder={listening ? t("conversation.listening") : `${t("conversation.replyTo")} ${character.name}…`}
                       className="flex-1 bg-transparent border-0 border-b border-border/20 pb-2 text-sm placeholder:text-muted-foreground/25 focus:outline-none focus:border-border/45 resize-none transition disabled:opacity-50"
                       style={{ minHeight: "2rem", maxHeight: "6rem" }}
@@ -1148,16 +1186,31 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
                     />
                     <button
                       onClick={() => send()}
-                      disabled={!input.trim() || isTyping || isStreamingReply}
+                      disabled={!input.trim() || isTyping || isStreamingReply || isCheckingModeration}
                       className="mb-1 grid h-7 w-7 place-items-center rounded-full bg-gradient-amber text-primary-foreground hover:scale-105 transition disabled:opacity-30 disabled:hover:scale-100 shrink-0"
                     >
                       <Send className="h-3 w-3" />
                     </button>
                   </div>
-                  <p className="mt-2 text-[9px] text-muted-foreground/25 flex items-center gap-1.5">
-                    <span className="h-1 w-1 rounded-full bg-primary/50 inline-block" />
-                    {t("conversation.reviewedNote")}
-                  </p>
+                  <AnimatePresence>
+                    {blockedNotice && (
+                      <motion.p
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="mt-2 text-[10px] text-amber-400/80"
+                      >
+                        {blockedNotice}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                  {!blockedNotice && (
+                    <p className="mt-2 text-[9px] text-muted-foreground/25 flex items-center gap-1.5">
+                      <span className="h-1 w-1 rounded-full bg-primary/50 inline-block" />
+                      {t("conversation.reviewedNote")}
+                    </p>
+                  )}
                 </div>
               )}
 

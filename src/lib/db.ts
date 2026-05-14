@@ -19,10 +19,27 @@ export type ConversationSummary = {
   highlight: string;
 };
 
+export type FlaggedMessage = {
+  text: string;
+  reason: "crisis_detection" | "explicit" | "jailbreak" | "personal_info" | "violence";
+  severity: "low" | "medium" | "high";
+  t: string;
+};
+
 export type ModerationResult = {
   score: number;
   decision: "rejected" | "review" | "deliver";
   reason: string;
+  // Quality scoring (Layer 2)
+  qualityScore?: number;
+  listening?: number;
+  safety?: number;
+  depth?: number;
+  helperCrisis?: boolean;
+  flaggedMessages?: FlaggedMessage[];
+  // Review state (Layer 3)
+  reviewed?: boolean;
+  escalated?: boolean;
 };
 
 export type CharacterInsights = {
@@ -267,6 +284,8 @@ export type UserDoc = {
   onboardingCompleted?: boolean;
   onboardingCompletedAt?: Timestamp;
   language?: string;
+  blocked?: boolean;
+  blockedAt?: Timestamp;
 };
 
 export async function ensureUserDoc(uid: string): Promise<void> {
@@ -601,6 +620,24 @@ export async function getDiscoveryData(): Promise<DiscoveryData> {
     if (ts >= weekAgo) recentConvCount[c.characterId] = (recentConvCount[c.characterId] ?? 0) + 1;
   });
   return { recentConvCount, lastConvDate };
+}
+
+// ── Moderation admin actions (Layer 3) ───────────────────────────────────────
+
+export async function markConversationReviewed(conversationId: string): Promise<void> {
+  await updateDoc(doc(db, "conversations", conversationId), { "moderation.reviewed": true });
+}
+
+export async function escalateConversation(conversationId: string): Promise<void> {
+  await updateDoc(doc(db, "conversations", conversationId), { "moderation.escalated": true });
+}
+
+export async function blockUser(uid: string): Promise<void> {
+  await setDoc(doc(db, "users", uid), { blocked: true, blockedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function unblockUser(uid: string): Promise<void> {
+  await setDoc(doc(db, "users", uid), { blocked: false }, { merge: true });
 }
 
 export async function getHelperRecentEmotionTags(helperId: string): Promise<string[]> {
