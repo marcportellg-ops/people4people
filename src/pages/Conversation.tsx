@@ -559,6 +559,7 @@ const Conversation = ({ demoCharacter }: { demoCharacter?: Character } = {}) => 
         setIsCheckingModeration(false);
       }
 
+      console.log("[send] moderation result:", modCheck);
       if (!modCheck.safe && modCheck.severity === "high") {
         if (modCheck.reason === "crisis_detection") {
           setCrisisLevel("high");
